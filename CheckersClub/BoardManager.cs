@@ -12,6 +12,11 @@ public class BoardManager : NetworkObject
 
     private Dictionary<int, CheckersBoard> _boards = new();
 
+    public bool IsPlaying(ClientId id)
+    {
+        return _boards.Any(p => p.Value.IsAPlayer(id));
+    }
+
     [Rpc(RpcCaller.Server, InvokeOnCaller = true)]
     public virtual void AddNewBoard([RpcCallee] ClientId callee, int id)
     {
