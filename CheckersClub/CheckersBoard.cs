@@ -14,8 +14,11 @@ public class CheckersBoard
 
     private CellState[][] _board;
 
-    public CheckersBoard()
+    public int Id { get; private set; }
+
+    public CheckersBoard(int id)
     {
+        Id = id;
         _board = new CellState[BoardSize][];
         for (int i = 0; i < _board.Length; i++)
             _board[i] = new CellState[BoardSize];
@@ -31,17 +34,63 @@ public class CheckersBoard
         _board[cell.x][cell.y] = state;
     }
 
-    private ClientId _redPlayer;
-    private ClientId _blackPlayer;
+    private static char RowChar(int r)
+    {
+        switch(r)
+        {
+            case 0: return 'A';
+            case 1: return 'B';
+            case 2: return 'C';
+            case 3: return 'D';
+            case 4: return 'E';
+            case 5: return 'F';
+            case 6: return 'G';
+            case 7: return 'H';
+        }
+        return '_';
+    }
+
+    private static char CellChar(CellState cell)
+    {
+        switch (cell)
+        {
+            case CellState.Red: return 'R';
+            case CellState.Black: return 'B';
+            case CellState.Empty:
+            default:
+                return ' ';
+        }
+    }
+
+    public override string ToString()
+    {
+        var str = "   1  2  3  4  5  6  7  8\n";
+        for (int i = 0; i < _board.Length; i++)
+        {
+            str += RowChar(i) + " ";
+            for (int j = 0; j < _board[i].Length; j++)
+                str += "[" + CellChar(_board[i][j]) + "]";
+            str += '\n';
+        }
+        return str;
+    }
+
+    public ClientId RedPlayer { get; private set; }
+    public ClientId BlackPlayer { get; private set; }
+
+    public bool IsAPlayer(ClientId client)
+    {
+        return client == RedPlayer || client == BlackPlayer;
+    }
 
     private int _remainingRed;
     private int _remainingBlack;
 
     public int GetRemainingPieces(ClientId player)
     {
-        if (player == _redPlayer)
+        if (player == RedPlayer)
             return _remainingRed;
-        else if (player == _blackPlayer)
+        else if (player == BlackPlayer)
             return _remainingBlack;
         return -1;
     }
@@ -56,8 +105,8 @@ public class CheckersBoard
 
     public void ResetBoard(ClientId red, ClientId black)
     {
-        _redPlayer = red;
-        _blackPlayer = black;
+        RedPlayer = red;
+        BlackPlayer = black;
         _remainingBlack = 12;
         _remainingRed = 12;
         
@@ -81,12 +130,12 @@ public class CheckersBoard
         }
     }
 
-    public NetworkList<Capacity16, NetworkList<Capacity16, byte>> BoardToLists()
+    public NetworkList<Capacity8, NetworkList<Capacity8, byte>> BoardToLists()
     {
-        var matrix = new NetworkList<Capacity16, NetworkList<Capacity16, byte>>();
+        var matrix = new NetworkList<Capacity8, NetworkList<Capacity8, byte>>();
         for(int i = 0; i < _board!.Length; i++)
         {
-            matrix.Add(new NetworkList<Capacity16, byte>());
+            matrix.Add(new NetworkList<Capacity8, byte>());
             for (int j = 0; j < _board![i].Length; j++)
             {
                 matrix[i].Add((byte)_board![i][j]);
@@ -95,7 +144,7 @@ public class CheckersBoard
         return matrix;
     }
 
-    public void SetState(NetworkList<Capacity16, NetworkList<Capacity16, byte>> board)
+    public void SetState(NetworkList<Capacity8, NetworkList<Capacity8, byte>> board)
     {
         for (int i = 0; i < board.Count; i++)
         {
@@ -131,7 +180,7 @@ public class CheckersBoard
         return MoveResult.Moved;
     }
 
-    private bool ValidateMove(BoardCell from, BoardCell to)
+    public bool ValidateMove(BoardCell from, BoardCell to)
     {
         if (GetCell(from) == CellState.Empty) return false;
         if (GetCell(to) != CellState.Empty) return false;
