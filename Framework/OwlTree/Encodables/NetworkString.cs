@@ -52,6 +52,13 @@ namespace OwlTree
 
         public void FromBytes(ReadOnlySpan<byte> bytes)
         {
+            if (Capacity == 0)
+            {
+                int capacity = ((ICapacity)Activator.CreateInstance(typeof(C))).Capacity();
+                if (capacity <= 0)
+                    throw new ArgumentException("NetworkString length must be greater than 0.");
+                Capacity = capacity;
+            }
             _str = Encoding.UTF8.GetString(bytes.Slice(0, Math.Min(bytes.Length, MaxLength())));
             _str = _str.Substring(0, Math.Min(_str.Length, Capacity));
         }
@@ -63,6 +70,14 @@ namespace OwlTree
 
         public int MaxLength()
         {
+            if (Capacity == 0)
+            {
+                int capacity = ((ICapacity)Activator.CreateInstance(typeof(C))).Capacity();
+                if (capacity <= 0)
+                    throw new ArgumentException("NetworkString length must be greater than 0.");
+                
+                Capacity = capacity;
+            }
             return Capacity * 4;
         }
 

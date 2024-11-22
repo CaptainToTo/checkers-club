@@ -6,6 +6,7 @@ public class Program
     {
         if (args[0] == "server")
         {
+            File.WriteAllText("OwlTreeServer.log", "");
             var server = new Connection(new Connection.Args
             {
                 appId = "CheckersClub_OwlTreeExample",
@@ -27,6 +28,7 @@ public class Program
         }
         else if (args[0] == "client")
         {
+            File.WriteAllText("OwlTreeClient.log", "");
             var client = new Connection(new Connection.Args
             {
                 appId = "CheckersClub_OwlTreeExample",
@@ -36,6 +38,7 @@ public class Program
                 printer = ClientLog,
                 verbosity = Logger.Includes().All()
             });
+            client.OnReady += (_) => Console.WriteLine("connected!");
             var ui = new UI();
             ClientUpdateLoop(client, ui);
         }
@@ -65,6 +68,7 @@ public class Program
 
     static void ClientUpdateLoop(Connection connection, UI ui)
     {
+        Console.WriteLine("waiting for server...");
         while (connection.IsActive)
         {
             connection.ExecuteQueue();
@@ -72,7 +76,6 @@ public class Program
             {
                 TryGetManagers(ui);
             }
-            Console.WriteLine("waiting");
             Thread.Sleep(500);
         }
     }

@@ -34,7 +34,7 @@ public class PlayerManager : NetworkObject
         _players = players;
     }
 
-    [Rpc(RpcCaller.Client)]
+    [Rpc(RpcCaller.Client, InvokeOnCaller = false)]
     public virtual void SendUsername(NetworkString<Capacity32> name, [RpcCaller] ClientId caller = default)
     {
         Console.WriteLine("player name: " + caller + " " + name);
