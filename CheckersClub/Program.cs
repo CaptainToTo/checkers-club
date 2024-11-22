@@ -4,27 +4,30 @@ public class Program
 {
     static void Main(string[] args)
     {
-        Connection? connection = null;
-
         if (args[0] == "server")
         {
-            connection = new Connection(new Connection.Args
+            var server = new Connection(new Connection.Args
             {
                 appId = "CheckersClub_OwlTreeExample",
                 role = Connection.Role.Server,
                 serverAddr = "127.0.0.1",
                 maxClients = 16,
-                threadUpdateDelta = 500,
+                threaded = false,
                 printer = ServerLog,
                 verbosity = Logger.Includes().All()
             });
+
+            server.OnClientConnected += (id) => Console.WriteLine(id + " joined");
+            server.OnClientDisconnected += (id) => Console.WriteLine(id + " left");
+
             // init managers
-            connection.Spawn<BoardManager>();
-            connection.Spawn<PlayerManager>();
+            server.Spawn<BoardManager>();
+            server.Spawn<PlayerManager>();
+            ServerUpdateLoop(server);
         }
         else if (args[0] == "client")
         {
-            connection = new Connection(new Connection.Args
+            var client = new Connection(new Connection.Args
             {
                 appId = "CheckersClub_OwlTreeExample",
                 role = Connection.Role.Client,
@@ -33,6 +36,8 @@ public class Program
                 printer = ClientLog,
                 verbosity = Logger.Includes().All()
             });
+            var ui = new UI();
+            ClientUpdateLoop(client, ui);
         }
         else if (args[0] == "test")
         {
@@ -44,19 +49,43 @@ public class Program
             Console.WriteLine("Must specify whether to start a server or client connection, exiting...");
             return;
         }
-
-        UpdateLoop(connection);
     }
 
-    static void UpdateLoop(Connection connection)
+    static void ServerUpdateLoop(Connection connection)
+    {
+        while (connection.IsActive)
+        {
+            connection.Read();
+            connection.ExecuteQueue();
+            connection.Send();
+            Thread.Sleep(100);
+        }
+    }
+    static void ServerLog(string text) => File.AppendAllText("OwlTreeServer.log", text);
+
+    static void ClientUpdateLoop(Connection connection, UI ui)
     {
         while (connection.IsActive)
         {
             connection.ExecuteQueue();
+            if (!ui.IsReady)
+            {
+                TryGetManagers(ui);
+            }
+            Console.WriteLine("waiting");
             Thread.Sleep(500);
         }
     }
-    
-    static void ServerLog(string text) => File.AppendAllText("OwlTreeServer.log", text);
     static void ClientLog(string text) => File.AppendAllText("OwlTreeClient.log", text);
+
+    static void TryGetManagers(UI ui)
+    {
+        if (PlayerManager.Instance != null)
+            ui.players = PlayerManager.Instance;
+        if (BoardManager.Instance != null)
+            ui.boards = BoardManager.Instance;
+
+        if (ui.IsReady)
+            ui.GetUsername();
+    }
 }
