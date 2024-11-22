@@ -48,7 +48,7 @@ public class BoardManager : NetworkObject
     }
 
     [Rpc(RpcCaller.Client, InvokeOnCaller = true)]
-    public virtual void MakeMove(int boardId, BoardCell from, BoardCell to, [RpcCaller] ClientId caller)
+    public virtual void MakeMove(int boardId, BoardCell from, BoardCell to, [RpcCaller] ClientId caller = default)
     {
         if (!_boards.TryGetValue(boardId, out var board))
             return;

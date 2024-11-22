@@ -47,7 +47,7 @@ namespace OwlTree
 
         public int ByteLength()
         {
-            return Encoding.UTF8.GetByteCount(_str);
+            return _str == null ? 0 : Encoding.UTF8.GetByteCount(_str);
         }
 
         public void FromBytes(ReadOnlySpan<byte> bytes)

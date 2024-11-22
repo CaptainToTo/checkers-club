@@ -18,6 +18,9 @@ public class Program
                 printer = ServerLog,
                 verbosity = Logger.Includes().All()
             });
+            // init managers
+            connection.Spawn<BoardManager>();
+            connection.Spawn<PlayerManager>();
         }
         else if (args[0] == "client")
         {
@@ -53,7 +56,6 @@ public class Program
             Thread.Sleep(500);
         }
     }
-
     
     static void ServerLog(string text) => File.AppendAllText("OwlTreeServer.log", text);
     static void ClientLog(string text) => File.AppendAllText("OwlTreeClient.log", text);
