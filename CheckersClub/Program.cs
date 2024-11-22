@@ -52,6 +52,7 @@ public class Program
             Console.WriteLine("Must specify whether to start a server or client connection, exiting...");
             return;
         }
+        return;
     }
 
     static void ServerUpdateLoop(Connection connection)
@@ -76,17 +77,23 @@ public class Program
             {
                 TryGetManagers(ui);
             }
+            else if (ui.HasName)
+            {
+                ui.GetCommand();
+            }
             Thread.Sleep(500);
         }
+        Console.WriteLine("disconnected...");
+        Environment.Exit(0);
     }
     static void ClientLog(string text) => File.AppendAllText("OwlTreeClient.log", text);
 
     static void TryGetManagers(UI ui)
     {
         if (PlayerManager.Instance != null)
-            ui.players = PlayerManager.Instance;
+            ui.SetPlayers(PlayerManager.Instance);
         if (BoardManager.Instance != null)
-            ui.boards = BoardManager.Instance;
+            ui.SetBoards(BoardManager.Instance);
 
         if (ui.IsReady)
             ui.GetUsername();
