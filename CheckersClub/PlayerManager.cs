@@ -27,6 +27,10 @@ public class PlayerManager : NetworkObject
 
     public string GetLocalName() => GetName(Connection.LocalId);
 
+    public ClientId GetId(string name) => _players.Where(p => p.Value == name).FirstOrDefault().Key;
+
+    public bool HasName(string name) => _players.ContainsValue(name);
+
     public const string DefaultPlayerName = "NewPlayer";
 
     private void RemovePlayer(ClientId id)

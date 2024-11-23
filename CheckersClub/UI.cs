@@ -26,7 +26,8 @@ public class UI
     public void GetUsername()
     {
         Console.Write("Username: ");
-        var name = Console.ReadLine();
+        var name = Console.ReadLine() ?? PlayerManager.DefaultPlayerName;
+        name.Replace(' ', '_');
         players!.SendUsername(name);
     }
 
@@ -45,15 +46,24 @@ public class UI
     public bool GetCommand()
     {
         Console.Write("Command (h): ");
-        var c = Console.ReadLine();
+        var c = Console.ReadLine() ?? "";
 
-        switch(c)
+        var tokens = c.Split(' ') ?? [""];
+
+        switch(tokens[0])
         {
             case "q":
             case "quit": Quit(); break;
 
             case "p":
             case "players": ShowPlayers(); break;
+
+            case "play":
+                if (tokens.Length == 2) 
+                    ChallengePlayer(tokens[1]);
+                else
+                    Help();
+                break;
 
             case "h":
             case "help": Help(); break;
@@ -70,10 +80,10 @@ public class UI
     private void Help()
     {
         var str = "\nCheckers Club Commands:\n";
-        str += "  (h)elp: displays this message\n";
-        str += "  (p)layers: displays a list of players online\n";
+        str += "           (h)elp: displays this message\n";
+        str += "        (p)layers: displays a list of players online\n";
         str += "  play (username): challenge a player to a game of checkers\n";
-        str += "  (q)uit: disconnect from the server\n";
+        str += "           (q)uit: disconnect from the server\n";
         
         Console.WriteLine(str);
     }
@@ -93,5 +103,18 @@ public class UI
         }
 
         Console.WriteLine(str);
+    }
+
+    private void ChallengePlayer(string player)
+    {
+        if (!players!.HasName(player))
+        {
+            Console.WriteLine("\n'" + player + "' is not online\n");
+            return;
+        }
+
+        boards!.ChallengePlayer(players!.GetId(player));
+
+        Console.WriteLine("Sending challenge to " + player + ", waiting for response...");
     }
 }

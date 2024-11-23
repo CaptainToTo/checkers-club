@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 
 namespace OwlTree
@@ -307,6 +308,11 @@ namespace OwlTree
         /// Iterable of all connected clients.
         /// </summary>
         public IEnumerable<ClientId> Clients { get { return _clients; } }
+
+        /// <summary>
+        /// Returns true if the given ClientId currently exists on this connection.
+        /// </summary>
+        public bool ContainsClient(ClientId id) => _clients.Any(c => c == id);
 
         /// <summary>
         /// Invoked when a new client connects. Provides the id of the new client.

@@ -78,6 +78,10 @@ public class CheckersBoard
     public ClientId RedPlayer { get; private set; }
     public ClientId BlackPlayer { get; private set; }
 
+    public int Turn { get; private set; } = 0;
+
+    public ClientId NextTurn { get { return Turn % 2 == 0 ? RedPlayer : BlackPlayer; } }
+
     public bool IsAPlayer(ClientId client)
     {
         return client == RedPlayer || client == BlackPlayer;
@@ -85,6 +89,16 @@ public class CheckersBoard
 
     private int _remainingRed;
     private int _remainingBlack;
+
+    public bool IsGameOver { get { return GetRemainingPieces(RedPlayer) <= 0 || GetRemainingPieces(BlackPlayer) <= 0; } }
+
+    public ClientId Winner { get {
+        if (GetRemainingPieces(RedPlayer) <= 0)
+            return BlackPlayer;
+        if (GetRemainingPieces(BlackPlayer) <= 0)
+            return RedPlayer;
+        return ClientId.None;
+    } }
 
     public int GetRemainingPieces(ClientId player)
     {
@@ -177,6 +191,7 @@ public class CheckersBoard
             return MoveResult.Captured;
         }
 
+        Turn++;
         return MoveResult.Moved;
     }
 
