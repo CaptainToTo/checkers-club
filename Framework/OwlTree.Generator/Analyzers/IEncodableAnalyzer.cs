@@ -43,6 +43,7 @@ namespace OwlTree.Generator
         public static void AddPrimitives()
         {
             GeneratorState.AddEncodable(Helpers.Tk_Byte, false);
+            GeneratorState.AddEncodable(Helpers.Tk_Bool, false);
 
             GeneratorState.AddEncodable(Helpers.Tk_UShort, false);
             GeneratorState.AddEncodable(Helpers.Tk_Short, false);

@@ -125,6 +125,7 @@ namespace OwlTree.Generator
 
         // int types
         public const string Tk_Byte = "byte";
+        public const string Tk_Bool = "bool";
         public const string Tk_UShort = "ushort";
         public const string Tk_UInt16 = "UInt16";
         public const string Tk_Short = "short";
