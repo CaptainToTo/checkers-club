@@ -56,13 +56,20 @@ public class BoardManager : NetworkObject
     }
 
     [Rpc(RpcCaller.Client)]
-    public virtual void AcceptChallenge(ClientId challenger, [RpcCaller] ClientId caller = default)
+    public virtual void ChallengeResponse(ClientId challenger, bool response, [RpcCaller] ClientId caller = default)
     {
         if (!_challenges.Contains((challenger, caller)))
         {
             return;
         }
-        NewGame(challenger, caller);
+        if (!response)
+        {
+            RejectChallenge(challenger, caller);
+        }
+        else
+        {
+            NewGame(challenger, caller);
+        }
     }
 
     private int curBoardId = 0;
@@ -71,27 +78,33 @@ public class BoardManager : NetworkObject
     {
         if (Connection.NetRole == Connection.Role.Server)
         {
-            AddNewBoard(redPlayer, curBoardId, blackPlayer, true);
-            AddNewBoard(blackPlayer, curBoardId, redPlayer, false);
+            var board = new CheckersBoard(curBoardId);
+            _boards.Add(board.Id, board);
             curBoardId++;
+
+            AddNewBoard(redPlayer, board.Id, blackPlayer, true);
+            AddNewBoard(blackPlayer, board.Id, redPlayer, false);
+
+            RequestMove(board.NextTurn, board.Id);
         }
     }
 
-    public Action<ClientId, ClientId>? OnGameStart;
+    public Action<ClientId, ClientId, CheckersBoard>? OnGameStart;
 
-    [Rpc(RpcCaller.Server, InvokeOnCaller = true)]
+    [Rpc(RpcCaller.Server, InvokeOnCaller = false)]
     public virtual void AddNewBoard([RpcCallee] ClientId callee, int id, ClientId otherPlayer, bool isRed)
     {
         if (_boards.ContainsKey(id)) return;
-
         var board = new CheckersBoard(id);
         _boards.Add(id, board);
+
         if (isRed)
             board.ResetBoard(callee, otherPlayer);
         else
             board.ResetBoard(otherPlayer, callee);
+
         if (Connection.NetRole == Connection.Role.Client)
-            OnGameStart?.Invoke(callee, otherPlayer);
+            OnGameStart?.Invoke(callee, otherPlayer, board);
     }
 
     [Rpc(RpcCaller.Server, InvokeOnCaller = true)]
@@ -107,13 +120,15 @@ public class BoardManager : NetworkObject
         if (_boards.TryGetValue(id, out var board))
             board.SetState(state);
     }
-
+    
+    public Action<CheckersBoard, ClientId, BoardCell, BoardCell>? OnMoveReceived;
     [Rpc(RpcCaller.Server)]
-    public virtual void EnforceMove([RpcCallee] ClientId callee, int boardId, BoardCell from, BoardCell to)
+    public virtual void EnforceMove([RpcCallee] ClientId callee, int boardId, ClientId player, BoardCell from, BoardCell to)
     {
         if (_boards.TryGetValue(boardId, out var board))
         {
             var result = board.MovePiece(from, to);
+            OnMoveReceived?.Invoke(board, player, from, to);
         }
     }
 
@@ -135,8 +150,8 @@ public class BoardManager : NetworkObject
             }
             
             var result = board.MovePiece(from, to);
-            EnforceMove(board.RedPlayer, boardId, from, to);
-            EnforceMove(board.BlackPlayer, boardId, from, to);
+            EnforceMove(board.RedPlayer, boardId, caller, from, to);
+            EnforceMove(board.BlackPlayer, boardId, caller, from, to);
 
             if (board.IsGameOver)
             {
@@ -144,6 +159,10 @@ public class BoardManager : NetworkObject
                 DeclareWinner(board.BlackPlayer, board.Winner);
                 RemoveBoard(board.RedPlayer, boardId);
                 RemoveBoard(board.BlackPlayer, boardId);
+            }
+            else
+            {
+                RequestMove(board.NextTurn, board.Id);
             }
         }
         else

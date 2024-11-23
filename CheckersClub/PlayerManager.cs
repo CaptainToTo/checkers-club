@@ -48,7 +48,7 @@ public class PlayerManager : NetworkObject
     [Rpc(RpcCaller.Client, InvokeOnCaller = false)]
     public virtual void SendUsername(NetworkString<Capacity32> name, [RpcCaller] ClientId caller = default)
     {
-        Console.WriteLine("player name: " + caller + " " + name);
+        Console.WriteLine("attempted player name assignment: " + caller + " " + name);
         if (_players.ContainsValue(name))
             DenyUsername(caller);
         else
@@ -64,6 +64,8 @@ public class PlayerManager : NetworkObject
     [Rpc(RpcCaller.Server, InvokeOnCaller = true)]
     public virtual void BroadcastUsername(ClientId player, NetworkString<Capacity32> name)
     {
+        if (Connection.NetRole == Connection.Role.Server)
+            Console.WriteLine("assigned player name: " + player + " " + name);
         _players[player] = name;
         if (player == Connection.LocalId)
             OnNameAssigned?.Invoke(name);

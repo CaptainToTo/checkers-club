@@ -19,7 +19,7 @@ namespace OwlTree.Generator
 
         // ! must match defaults on RpcAttribute
         public const GeneratorState.RpcCaller RPC_CALLER_DEFAULT = GeneratorState.RpcCaller.Any;
-        public const bool RPC_INVOKE_ON_CALLER_DEFAULT = true;
+        public const bool RPC_INVOKE_ON_CALLER_DEFAULT = false;
         public const bool RPC_USE_TCP_DEFAULT = true;
 
         // * tokens
@@ -527,7 +527,7 @@ namespace OwlTree.Generator
                 if (arg.NameEquals.Name.Identifier.ValueText == Tk_InvokeOnCaller)
                 {
                     if (arg.Expression is LiteralExpressionSyntax literal)
-                        invokeOnCaller = literal.Token.IsKind(SyntaxKind.TrueLiteralExpression);
+                        invokeOnCaller = literal.Token.ValueText == "true";
                 }
                 else if (arg.NameEquals.Name.Identifier.ValueText == Tk_RpcProtocol)
                 {

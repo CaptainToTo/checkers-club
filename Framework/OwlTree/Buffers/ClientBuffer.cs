@@ -21,7 +21,8 @@ namespace OwlTree
             _tcpEndPoint = new IPEndPoint(Address, TcpPort);
 
             _udpClient = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            _udpClient.Bind(new IPEndPoint(Address, ClientUdpPort));
+            _udpClient.Bind(new IPEndPoint(Address, 0));
+            _udpPort = ((IPEndPoint)_udpClient.LocalEndPoint).Port;
 
             _udpEndPoint = new IPEndPoint(Address, ServerUdpPort);
 
@@ -31,6 +32,7 @@ namespace OwlTree
             _tcpPacket = new Packet(BufferSize);
             _tcpPacket.header.owlTreeVer = OwlTreeVersion;
             _tcpPacket.header.appVer = AppVersion;
+
             _udpPacket = new Packet(BufferSize, true);
             _udpPacket.header.owlTreeVer = OwlTreeVersion;
             _udpPacket.header.appVer = AppVersion;
@@ -42,6 +44,7 @@ namespace OwlTree
         // client state
         private Socket _tcpClient;
         private Socket _udpClient;
+        private int _udpPort;
         private IPEndPoint _tcpEndPoint;
         private IPEndPoint _udpEndPoint;
         private List<Socket> _readList = new List<Socket>();
@@ -63,16 +66,18 @@ namespace OwlTree
             if (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _lastRequest > _requestRate)
             {
                 var idBytes = _udpPacket.GetSpan(ConnectionRequestLength);
-                ConnectionRequestEncode(idBytes, ApplicationId);
+                ConnectionRequestEncode(idBytes, ApplicationId, _udpPort);
+                _udpPacket.header.timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 _udpClient.SendTo(_udpPacket.GetPacket().ToArray(), _udpEndPoint);
+                if (Logger.includes.connectionAttempts)
+                {
+                    Logger.Write("Connection request made to " + Address.ToString() + " at " + DateTime.UtcNow + ". Sent:\n" + PacketToString(_udpPacket));
+                }
+
                 _udpPacket.Clear();
                 _lastRequest = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 _remainingRequests--;
 
-                if (Logger.includes.connectionAttempts)
-                {
-                    Logger.Write("Connection request made to " + Address.ToString() + " at " + DateTime.UtcNow);
-                }
             }
 
             _readList.Clear();

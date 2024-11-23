@@ -468,9 +468,9 @@ namespace OwlTree
                 message = new NetworkBuffer.Message(caller, LocalId, rpcId, target, Protocol.Tcp, args);
                 if (_logger.includes.rpcReceives)
                 {
-                    var output = $"RECEIVING: {Protocols.GetRpcName(rpcId.Id)} {rpcId}, Called on Object {target}";
+                    var output = $"RECEIVING:\n{Protocols.GetRpcName(rpcId.Id)} {rpcId}, Called on Object {target}";
                     if (_logger.includes.rpcReceiveEncodings)
-                        output += ":\n" + Protocols.GetEncodingSummary(LocalId, rpcId, target, args);
+                        output += ":\n" + Protocols.GetEncodingSummary(caller, rpcId, target, args);
                     _logger.Write(output);
                 }
                 return true;
@@ -511,7 +511,7 @@ namespace OwlTree
                 RpcEncoding.EncodeRpc(message.bytes, message.rpcId, message.target, message.args);
                 if (_logger.includes.rpcCalls)
                 {
-                    var output = $"SENDING: {Protocols.GetRpcName(rpcId.Id)} {rpcId}, Called on Object {target}";
+                    var output = $"SENDING:\n{Protocols.GetRpcName(rpcId.Id)} {rpcId}, Called on Object {target}";
                     if (_logger.includes.rpcCallEncodings)
                         output += ":\n" + Protocols.GetEncodingSummary(LocalId, rpcId, target, args);
                     _logger.Write(output);

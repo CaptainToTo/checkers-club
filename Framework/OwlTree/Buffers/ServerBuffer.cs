@@ -78,16 +78,18 @@ namespace OwlTree
         private List<ClientData> _clientData = new List<ClientData>();
         private List<IPEndPoint> _connectionRequests = new List<IPEndPoint>();
 
-        private bool GetConnectionRequest(IPEndPoint endPoint)
+        private bool GetConnectionRequest(IPEndPoint endPoint, out int udpPort)
         {
             for (int i = 0; i < _connectionRequests.Count; i++)
             {
                 if (_connectionRequests[i].Address.Equals(endPoint.Address))
                 {
+                    udpPort = _connectionRequests[i].Port;
                     _connectionRequests.RemoveAt(i);
                     return true;
                 }
             }
+            udpPort = 0;
             return false;
         }
 
@@ -115,7 +117,7 @@ namespace OwlTree
         private ClientData FindClientData(IPEndPoint endPoint)
         {
             foreach (var data in _clientData)
-                if (data.udpEndPoint.Address.Equals(endPoint.Address)) return data;
+                if (data.udpEndPoint.Address.Equals(endPoint.Address) && data.udpEndPoint.Port == endPoint.Port) return data;
             return ClientData.None;
         }
 
@@ -148,13 +150,13 @@ namespace OwlTree
                     var tcpClient = socket.Accept();
 
                     // reject connections that aren't from verified app instances
-                    if(!GetConnectionRequest((IPEndPoint)tcpClient.RemoteEndPoint))
+                    if(!GetConnectionRequest((IPEndPoint)tcpClient.RemoteEndPoint, out var udpPort))
                     {
                         tcpClient.Close();
                         continue;
                     }
 
-                    IPEndPoint udpEndPoint = new IPEndPoint(((IPEndPoint)tcpClient.RemoteEndPoint).Address, ClientUdpPort);
+                    IPEndPoint udpEndPoint = new IPEndPoint(((IPEndPoint)tcpClient.RemoteEndPoint).Address, udpPort);
                     var hash = (UInt32)_rand.Next();
 
                     var clientData = new ClientData() {
@@ -171,6 +173,11 @@ namespace OwlTree
                     clientData.udpPacket.header.appVer = AppVersion;
 
                     _clientData.Add(clientData);
+
+                    if (Logger.includes.connectionAttempts)
+                    {
+                        Logger.Write($"TCP handshake made with {((IPEndPoint)tcpClient.RemoteEndPoint).Address} (tcp port: {((IPEndPoint)tcpClient.RemoteEndPoint).Port}) (udp port: {udpPort}). Assigned: {clientData.id}");
+                    }
 
                     OnClientConnected?.Invoke(clientData.id);
 
@@ -227,13 +234,18 @@ namespace OwlTree
                     if (client == ClientData.None)
                     {
                         var accepted = false;
+
+                        if (Logger.includes.connectionAttempts)
+                        {
+                            Logger.Write("Connection attempt from " + ((IPEndPoint)source).Address.ToString() + " (udp port: " + ((IPEndPoint)source).Port + ") received: \n" + PacketToString(ReadPacket));
+                        }
+
                         ReadPacket.StartMessageRead();
                         if (ReadPacket.TryGetNextMessage(out var bytes))
                         {
-                            var rpcId = ServerMessageDecode(bytes, out var id);
+                            var rpcId = ServerMessageDecode(bytes, out var id, out var udpPort);
                             if (rpcId == RpcId.CONNECTION_REQUEST && id == ApplicationId)
                             {
-
                                 // connection request verified, send client confirmation
                                 _connectionRequests.Add((IPEndPoint)source);
                                 accepted = true;
@@ -251,14 +263,14 @@ namespace OwlTree
 
                         if (Logger.includes.connectionAttempts)
                         {
-                            Logger.Write("Connection attempt from " + ((IPEndPoint)source).Address.ToString() + (accepted ? " accepted, awaiting TCP handshake..." : " rejected."));
+                            Logger.Write("Connection attempt from " + ((IPEndPoint)source).Address.ToString() + " (udp port: " + ((IPEndPoint)source).Port + ") " + (accepted ? "accepted, awaiting TCP handshake..." : "rejected."));
                         }
                         continue;
                     }
 
                     if (Logger.includes.udpPreTransform)
                     {
-                        var packetStr = new StringBuilder($"Pre-Transform UDP packet received from {client.id} at {DateTime.UtcNow}:\n");
+                        var packetStr = new StringBuilder($"RECEIVED: Pre-Transform UDP packet from {client.id} at {DateTime.UtcNow}:\n");
                         PacketToString(ReadPacket, packetStr);
                         Logger.Write(packetStr.ToString());
                     }
@@ -267,7 +279,7 @@ namespace OwlTree
 
                     if (Logger.includes.udpPostTransform)
                     {
-                        var packetStr = new StringBuilder($"Post-Transform UDP packet received from {client.id} at {DateTime.UtcNow}:\n");
+                        var packetStr = new StringBuilder($"RECEIVED: Post-Transform UDP packet from {client.id} at {DateTime.UtcNow}:\n");
                         PacketToString(ReadPacket, packetStr);
                         Logger.Write(packetStr.ToString());
                     }
@@ -336,7 +348,7 @@ namespace OwlTree
 
                         if (Logger.includes.tcpPreTransform)
                         {
-                            var packetStr = new StringBuilder($"Pre-Transform TCP packet received from {client.id} at {DateTime.UtcNow}:\n");
+                            var packetStr = new StringBuilder($"RECEIVED: Pre-Transform TCP packet from {client.id} at {DateTime.UtcNow}:\n");
                             PacketToString(ReadPacket, packetStr);
                             Logger.Write(packetStr.ToString());
                         }
@@ -345,7 +357,7 @@ namespace OwlTree
 
                         if (Logger.includes.tcpPostTransform)
                         {
-                            var packetStr = new StringBuilder($"Post-Transform TCP packet received from {client.id} at {DateTime.UtcNow}:\n");
+                            var packetStr = new StringBuilder($"RECEIVED: Post-Transform TCP packet from {client.id} at {DateTime.UtcNow}:\n");
                             PacketToString(ReadPacket, packetStr);
                             Logger.Write(packetStr.ToString());
                         }
@@ -411,7 +423,7 @@ namespace OwlTree
 
                     if (Logger.includes.tcpPreTransform)
                     {
-                        var packetStr = new StringBuilder($"Pre-Transform TCP packet sent to {client.id} at {DateTime.UtcNow}:\n");
+                        var packetStr = new StringBuilder($"SENDING: Pre-Transform TCP packet to {client.id} at {DateTime.UtcNow}:\n");
                         PacketToString(client.tcpPacket, packetStr);
                         Logger.Write(packetStr.ToString());
                     }
@@ -421,7 +433,7 @@ namespace OwlTree
 
                     if (Logger.includes.tcpPostTransform)
                     {
-                        var packetStr = new StringBuilder($"Post-Transform TCP packet sent to {client.id} at {DateTime.UtcNow}:\n");
+                        var packetStr = new StringBuilder($"SENDING: Post-Transform TCP packet to {client.id} at {DateTime.UtcNow}:\n");
                         PacketToString(client.tcpPacket, packetStr);
                         Logger.Write(packetStr.ToString());
                     }
@@ -436,7 +448,7 @@ namespace OwlTree
 
                     if (Logger.includes.tcpPreTransform)
                     {
-                        var packetStr = new StringBuilder($"Pre-Transform UDP packet sent to {client.id} at {DateTime.UtcNow}:\n");
+                        var packetStr = new StringBuilder($"SENDING: Pre-Transform UDP packet to {client.id} at {DateTime.UtcNow}:\n");
                         PacketToString(client.udpPacket, packetStr);
                         Logger.Write(packetStr.ToString());
                     }
@@ -446,7 +458,7 @@ namespace OwlTree
 
                     if (Logger.includes.tcpPostTransform)
                     {
-                        var packetStr = new StringBuilder($"Post-Transform UDP packet sent to {client.id} at {DateTime.UtcNow}:\n");
+                        var packetStr = new StringBuilder($"SENDING: Post-Transform UDP packet to {client.id} at {DateTime.UtcNow}:\n");
                         PacketToString(client.udpPacket, packetStr);
                         Logger.Write(packetStr.ToString());
                     }

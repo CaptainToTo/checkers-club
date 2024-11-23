@@ -67,35 +67,19 @@ public class Program
     }
     static void ServerLog(string text) => File.AppendAllText("OwlTreeServer.log", text);
 
+    public static Action<Connection, UI> curState = ClientStates.WaitingForConnection;
+
     static void ClientUpdateLoop(Connection connection, UI ui)
     {
         Console.WriteLine("waiting for server...");
         while (connection.IsActive)
         {
             connection.ExecuteQueue();
-            if (!ui.IsReady)
-            {
-                TryGetManagers(ui);
-            }
-            else if (ui.HasName)
-            {
-                ui.GetCommand();
-            }
-            Thread.Sleep(500);
+            curState.Invoke(connection, ui);
+            Thread.Sleep(200);
         }
         Console.WriteLine("disconnected...");
         Environment.Exit(0);
     }
     static void ClientLog(string text) => File.AppendAllText("OwlTreeClient.log", text);
-
-    static void TryGetManagers(UI ui)
-    {
-        if (PlayerManager.Instance != null)
-            ui.SetPlayers(PlayerManager.Instance);
-        if (BoardManager.Instance != null)
-            ui.SetBoards(BoardManager.Instance);
-
-        if (ui.IsReady)
-            ui.GetUsername();
-    }
 }
