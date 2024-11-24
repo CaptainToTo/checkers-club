@@ -35,9 +35,7 @@ namespace OwlTree.Generator
             var isFixed = "is fixed size";
 
             foreach (var pair in _encodables)
-            {
                 str.Append($"{pair.Key} : {(pair.Value ? isVariable : isFixed)}\n");
-            }
 
             return str.ToString();
         }

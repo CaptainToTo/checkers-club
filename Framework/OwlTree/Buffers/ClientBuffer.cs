@@ -22,7 +22,6 @@ namespace OwlTree
 
             _udpClient = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             _udpClient.Bind(new IPEndPoint(Address, 0));
-            _udpPort = ((IPEndPoint)_udpClient.LocalEndPoint).Port;
 
             _udpEndPoint = new IPEndPoint(Address, ServerUdpPort);
 
@@ -32,7 +31,6 @@ namespace OwlTree
             _tcpPacket = new Packet(BufferSize);
             _tcpPacket.header.owlTreeVer = OwlTreeVersion;
             _tcpPacket.header.appVer = AppVersion;
-
             _udpPacket = new Packet(BufferSize, true);
             _udpPacket.header.owlTreeVer = OwlTreeVersion;
             _udpPacket.header.appVer = AppVersion;
@@ -44,7 +42,6 @@ namespace OwlTree
         // client state
         private Socket _tcpClient;
         private Socket _udpClient;
-        private int _udpPort;
         private IPEndPoint _tcpEndPoint;
         private IPEndPoint _udpEndPoint;
         private List<Socket> _readList = new List<Socket>();
@@ -66,18 +63,16 @@ namespace OwlTree
             if (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _lastRequest > _requestRate)
             {
                 var idBytes = _udpPacket.GetSpan(ConnectionRequestLength);
-                ConnectionRequestEncode(idBytes, ApplicationId, _udpPort);
-                _udpPacket.header.timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                ConnectionRequestEncode(idBytes, ApplicationId);
                 _udpClient.SendTo(_udpPacket.GetPacket().ToArray(), _udpEndPoint);
-                if (Logger.includes.connectionAttempts)
-                {
-                    Logger.Write("Connection request made to " + Address.ToString() + " at " + DateTime.UtcNow + ". Sent:\n" + PacketToString(_udpPacket));
-                }
-
                 _udpPacket.Clear();
                 _lastRequest = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 _remainingRequests--;
 
+                if (Logger.includes.connectionAttempts)
+                {
+                    Logger.Write("Connection request made to " + Address.ToString() + " at " + DateTime.UtcNow);
+                }
             }
 
             _readList.Clear();
@@ -143,7 +138,6 @@ namespace OwlTree
                 if (socket == _tcpClient)
                 {
                     Array.Clear(ReadBuffer, 0, ReadBuffer.Length);
-
                     int dataRemaining = -1;
                     int dataLen = -1;
 
@@ -157,7 +151,7 @@ namespace OwlTree
                                 if (dataRemaining <= 0)
                                 {
                                     dataLen = socket.Receive(ReadBuffer);
-                                    dataRemaining = dataLen;  
+                                    dataRemaining = dataLen;
                                 }
                                 dataRemaining -= ReadPacket.FromBytes(ReadBuffer, dataLen - dataRemaining);
                                 iters++;
@@ -177,7 +171,7 @@ namespace OwlTree
 
                         if (Logger.includes.tcpPreTransform)
                         {
-                            var packetStr = new StringBuilder($"Pre-Transform TCP packet received from server at {DateTime.UtcNow}:\n");
+                            var packetStr = new StringBuilder($"RECEIVED: Pre-Transform TCP packet from server at {DateTime.UtcNow}:\n");
                             PacketToString(ReadPacket, packetStr);
                             Logger.Write(packetStr.ToString());
                         }
@@ -186,7 +180,7 @@ namespace OwlTree
 
                         if (Logger.includes.tcpPostTransform)
                         {
-                            var packetStr = new StringBuilder($"Post-Transform TCP packet received from server at {DateTime.UtcNow}:\n");
+                            var packetStr = new StringBuilder($"RECEIVED: Post-Transform TCP packet from server at {DateTime.UtcNow}:\n");
                             PacketToString(ReadPacket, packetStr);
                             Logger.Write(packetStr.ToString());
                         }
@@ -227,7 +221,7 @@ namespace OwlTree
 
                     if (Logger.includes.udpPreTransform)
                     {
-                        var packetStr = new StringBuilder($"Pre-Transform UDP packet received from server at {DateTime.UtcNow}:\n");
+                        var packetStr = new StringBuilder($"RECEIVED: Pre-Transform UDP packet from server at {DateTime.UtcNow}:\n");
                         PacketToString(ReadPacket, packetStr);
                         Logger.Write(packetStr.ToString());
                     }
@@ -236,7 +230,7 @@ namespace OwlTree
 
                     if (Logger.includes.udpPostTransform)
                     {
-                        var packetStr = new StringBuilder($"Post-Transform UDP packet received from server at {DateTime.UtcNow}:\n");
+                        var packetStr = new StringBuilder($"RECEIVED: Post-Transform UDP packet from server at {DateTime.UtcNow}:\n");
                         PacketToString(ReadPacket, packetStr);
                         Logger.Write(packetStr.ToString());
                     }
@@ -301,7 +295,7 @@ namespace OwlTree
 
                 if (Logger.includes.tcpPreTransform)
                 {
-                    var packetStr = new StringBuilder($"Pre-Transform TCP packet sent to server at {DateTime.UtcNow}:\n");
+                    var packetStr = new StringBuilder($"SENDING: Pre-Transform TCP packet to server at {DateTime.UtcNow}:\n");
                     PacketToString(_tcpPacket, packetStr);
                     Logger.Write(packetStr.ToString());
                 }
@@ -310,7 +304,7 @@ namespace OwlTree
 
                 if (Logger.includes.tcpPostTransform)
                 {
-                    var packetStr = new StringBuilder($"Post-Transform TCP packet sent to server at {DateTime.UtcNow}:\n");
+                    var packetStr = new StringBuilder($"SENDING: Post-Transform TCP packet to server at {DateTime.UtcNow}:\n");
                     PacketToString(_tcpPacket, packetStr);
                     Logger.Write(packetStr.ToString());
                 }
@@ -326,7 +320,7 @@ namespace OwlTree
 
                 if (Logger.includes.udpPreTransform)
                 {
-                    var packetStr = new StringBuilder($"Pre-Transform UDP packet sent to server at {DateTime.UtcNow}:\n");
+                    var packetStr = new StringBuilder($"SENDING: Pre-Transform UDP packet to server at {DateTime.UtcNow}:\n");
                     PacketToString(_udpPacket, packetStr);
                     Logger.Write(packetStr.ToString());
                 }
@@ -335,7 +329,7 @@ namespace OwlTree
 
                 if (Logger.includes.udpPostTransform)
                 {
-                    var packetStr = new StringBuilder($"Post-Transform UDP packet sent to server at {DateTime.UtcNow}:\n");
+                    var packetStr = new StringBuilder($"SENDING: Post-Transform UDP packet to server at {DateTime.UtcNow}:\n");
                     PacketToString(_udpPacket, packetStr);
                     Logger.Write(packetStr.ToString());
                 }

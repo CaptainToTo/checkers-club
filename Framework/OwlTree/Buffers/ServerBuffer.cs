@@ -197,7 +197,6 @@ namespace OwlTree
                         span = clientData.tcpPacket.GetSpan(ClientMessageLength);
                         ClientConnectEncode(span, otherClient.id);
                     }
-
                     HasClientEvent = true;
                     
                     clientData.tcpPacket.header.timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -245,9 +244,10 @@ namespace OwlTree
                         ReadPacket.StartMessageRead();
                         if (ReadPacket.TryGetNextMessage(out var bytes))
                         {
-                            var rpcId = ServerMessageDecode(bytes, out var id, out var udpPort);
+                            var rpcId = ServerMessageDecode(bytes, out var id);
                             if (rpcId == RpcId.CONNECTION_REQUEST && id == ApplicationId)
                             {
+
                                 // connection request verified, send client confirmation
                                 _connectionRequests.Add((IPEndPoint)source);
                                 accepted = true;
@@ -298,7 +298,6 @@ namespace OwlTree
                 else // receive client tcp messages
                 {
                     Array.Clear(ReadBuffer, 0, ReadBuffer.Length);
-
                     int dataRemaining = -1;
                     int dataLen = -1;
                     ClientData client = ClientData.None;
@@ -375,8 +374,6 @@ namespace OwlTree
                             }
                         }
                     } while (dataRemaining > 0);
-
-
                 }
             }
         }
@@ -506,9 +503,7 @@ namespace OwlTree
                 {
                     var span = otherClient.tcpPacket.GetSpan(ClientMessageLength);
                     ClientDisconnectEncode(span, client.id);
-                    Console.WriteLine("send disconnection to " + client.id);
                 }
-
                 HasClientEvent = true;
             }
         }

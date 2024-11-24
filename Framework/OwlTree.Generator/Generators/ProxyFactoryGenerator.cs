@@ -35,209 +35,179 @@ namespace OwlTree.Generator
         {
             AddDefaults();
 
-            var idArray = MethodDeclaration(
-                ArrayType(
-                    PredefinedType(
-                        Token(SyntaxKind.ByteKeyword)))
-                .WithRankSpecifiers(
-                    SingletonList<ArrayRankSpecifierSyntax>(
-                        ArrayRankSpecifier(
-                            SingletonSeparatedList<ExpressionSyntax>(
-                                OmittedArraySizeExpression())))),
-                Identifier(Helpers.Tk_GetTypeIds))
-            .WithModifiers(
-                TokenList(
-                    new []{
-                        Token(SyntaxKind.PublicKeyword),
-                        Token(SyntaxKind.OverrideKeyword)}))
-            .WithBody(
-                Block(
-                    SingletonList<StatementSyntax>(
-                        ReturnStatement(
-                            ArrayCreationExpression(
-                                ArrayType(
-                                    PredefinedType(
-                                        Token(SyntaxKind.ByteKeyword)))
-                                .WithRankSpecifiers(
-                                    SingletonList<ArrayRankSpecifierSyntax>(
-                                        ArrayRankSpecifier(
-                                            SingletonSeparatedList<ExpressionSyntax>(
-                                                OmittedArraySizeExpression())))))
-                            .WithInitializer(
-                                InitializerExpression(
-                                    SyntaxKind.ArrayInitializerExpression,
-                                    SeparatedList<ExpressionSyntax>(
-                                        CreateIdArray())))))));
-            
-            if (idArray == null)
-                throw new Exception("proxy factory GetTypeIds failed to generate");
-            
-            var createProxy = MethodDeclaration(
-                IdentifierName(Helpers.Tk_NetworkObject),
-                Identifier(Helpers.Tk_CreateProxy))
-            .WithModifiers(
-                TokenList(
-                    new []{
-                        Token(SyntaxKind.PublicKeyword),
-                        Token(SyntaxKind.OverrideKeyword)}))
-            .WithParameterList(
-                ParameterList(
-                    SingletonSeparatedList<ParameterSyntax>(
-                        Parameter(
-                            Identifier(
-                                TriviaList(),
-                                SyntaxKind.TypeKeyword,
-                                "type",
-                                "type",
-                                TriviaList()))
-                        .WithType(
-                            IdentifierName("Type")))))
-            .WithBody(
-                Block(
-                    SingletonList<StatementSyntax>(
-                        SwitchStatement(
-                            IdentifierName(
-                                Identifier(
-                                    TriviaList(),
-                                    SyntaxKind.TypeKeyword,
-                                    "type",
-                                    "type",
-                                    TriviaList())))
-                        .WithSections(
-                            List<SwitchSectionSyntax>( _createProxy )))));
-            
-            if (createProxy == null)
-                throw new Exception("proxy factory CreateProxy failed to generate");
-            
-            var hasTypeId = MethodDeclaration(
-                PredefinedType(
-                    Token(SyntaxKind.BoolKeyword)),
-                Identifier(Helpers.Tk_HasTypeId))
-            .WithModifiers(
-                TokenList(
-                    new []{
-                        Token(SyntaxKind.PublicKeyword),
-                        Token(SyntaxKind.OverrideKeyword)}))
-            .WithParameterList(
-                ParameterList(
-                    SingletonSeparatedList<ParameterSyntax>(
-                        Parameter(
-                            Identifier(
-                                TriviaList(),
-                                SyntaxKind.TypeKeyword,
-                                "type",
-                                "type",
-                                TriviaList()))
-                        .WithType(
-                            IdentifierName("Type")))))
-            .WithBody(
-                Block(
-                    SingletonList<StatementSyntax>(
-                        SwitchStatement(
-                            IdentifierName(
-                                Identifier(
-                                    TriviaList(),
-                                    SyntaxKind.TypeKeyword,
-                                    "type",
-                                    "type",
-                                    TriviaList())))
-                        .WithSections(
-                            List<SwitchSectionSyntax>( _hasTypeId )))));
-            
-            if (hasTypeId == null)
-                throw new Exception("proxy factory HasTypeId failed to generate");
-            
-            var typeFromId = MethodDeclaration(
-                IdentifierName("Type"),
-                Identifier(Helpers.Tk_TypeFromId))
-            .WithModifiers(
-                TokenList(
-                    new []{
-                        Token(SyntaxKind.PublicKeyword),
-                        Token(SyntaxKind.OverrideKeyword)}))
-            .WithParameterList(
-                ParameterList(
-                    SingletonSeparatedList<ParameterSyntax>(
-                        Parameter(
-                            Identifier("id"))
-                        .WithType(
-                            PredefinedType(
-                                Token(SyntaxKind.ByteKeyword))))))
-            .WithBody(
-                Block(
-                    SingletonList<StatementSyntax>(
-                        SwitchStatement(
-                            IdentifierName("id"))
-                        .WithSections(
-                            List<SwitchSectionSyntax>( _typeFromId )))));
-            
-            if (typeFromId == null)
-                throw new Exception("proxy factory TypeFromId failed to generate");
-            
-            var typeId = MethodDeclaration(
-                PredefinedType(
-                    Token(SyntaxKind.ByteKeyword)),
-                Identifier(Helpers.Tk_TypeId))
-            .WithModifiers(
-                TokenList(
-                    new []{
-                        Token(SyntaxKind.PublicKeyword),
-                        Token(SyntaxKind.OverrideKeyword)}))
-            .WithParameterList(
-                ParameterList(
-                    SingletonSeparatedList<ParameterSyntax>(
-                        Parameter(
-                            Identifier(
-                                TriviaList(),
-                                SyntaxKind.TypeKeyword,
-                                "type",
-                                "type",
-                                TriviaList()))
-                        .WithType(
-                            IdentifierName("Type")))))
-            .WithBody(
-                Block(
-                    SingletonList<StatementSyntax>(
-                        SwitchStatement(
-                            IdentifierName(
-                                Identifier(
-                                    TriviaList(),
-                                    SyntaxKind.TypeKeyword,
-                                    "type",
-                                    "type",
-                                    TriviaList())))
-                        .WithSections(
-                            List<SwitchSectionSyntax>( _typeId )))));
-            
-            if (typeId == null)
-                throw new Exception("proxy factory TypeId failed to generate");
-            
-            var factory = ClassDeclaration(Helpers.Tk_ProjectProxies)
-                .WithModifiers(
-                    TokenList(
-                        Token(SyntaxKind.PublicKeyword)))
-                .WithBaseList(
-                    BaseList(
-                        SingletonSeparatedList<BaseTypeSyntax>(
-                            SimpleBaseType(
-                                IdentifierName(Helpers.Tk_ProxyFactory)))))
-                .WithMembers(
-                    List<MemberDeclarationSyntax>(
-                        new MemberDeclarationSyntax[]{
-                            idArray,
-                            createProxy,
-                            hasTypeId,
-                            typeFromId,
-                            typeId}));
-            
-            if (factory == null)
-                throw new Exception("proxy factory class failed to generate");
-
             return CompilationUnit()
             .WithUsings(List<UsingDirectiveSyntax>(_namespaces))
             .WithMembers(
                 SingletonList<MemberDeclarationSyntax>(
-                    factory));
+                    ClassDeclaration(Helpers.Tk_ProjectProxies)
+                        .WithModifiers(
+                            TokenList(
+                                Token(SyntaxKind.PublicKeyword)))
+                        .WithBaseList(
+                            BaseList(
+                                SingletonSeparatedList<BaseTypeSyntax>(
+                                    SimpleBaseType(
+                                        IdentifierName(Helpers.Tk_ProxyFactory)))))
+                        .WithMembers(
+                            List<MemberDeclarationSyntax>(
+                                new MemberDeclarationSyntax[]{
+                                    MethodDeclaration(
+                                        ArrayType(
+                                            PredefinedType(
+                                                Token(SyntaxKind.ByteKeyword)))
+                                        .WithRankSpecifiers(
+                                            SingletonList<ArrayRankSpecifierSyntax>(
+                                                ArrayRankSpecifier(
+                                                    SingletonSeparatedList<ExpressionSyntax>(
+                                                        OmittedArraySizeExpression())))),
+                                        Identifier(Helpers.Tk_GetTypeIds))
+                                    .WithModifiers(
+                                        TokenList(
+                                            new []{
+                                                Token(SyntaxKind.PublicKeyword),
+                                                Token(SyntaxKind.OverrideKeyword)}))
+                                    .WithBody(
+                                        Block(
+                                            SingletonList<StatementSyntax>(
+                                                ReturnStatement(
+                                                    ArrayCreationExpression(
+                                                        ArrayType(
+                                                            PredefinedType(
+                                                                Token(SyntaxKind.ByteKeyword)))
+                                                        .WithRankSpecifiers(
+                                                            SingletonList<ArrayRankSpecifierSyntax>(
+                                                                ArrayRankSpecifier(
+                                                                    SingletonSeparatedList<ExpressionSyntax>(
+                                                                        OmittedArraySizeExpression())))))
+                                                    .WithInitializer(
+                                                        InitializerExpression(
+                                                            SyntaxKind.ArrayInitializerExpression,
+                                                            SeparatedList<ExpressionSyntax>(
+                                                                CreateIdArray()))))))),
+                                    MethodDeclaration(
+                                        IdentifierName(Helpers.Tk_NetworkObject),
+                                        Identifier(Helpers.Tk_CreateProxy))
+                                    .WithModifiers(
+                                        TokenList(
+                                            new []{
+                                                Token(SyntaxKind.PublicKeyword),
+                                                Token(SyntaxKind.OverrideKeyword)}))
+                                    .WithParameterList(
+                                        ParameterList(
+                                            SingletonSeparatedList<ParameterSyntax>(
+                                                Parameter(
+                                                    Identifier(
+                                                        TriviaList(),
+                                                        SyntaxKind.TypeKeyword,
+                                                        "type",
+                                                        "type",
+                                                        TriviaList()))
+                                                .WithType(
+                                                    IdentifierName("Type")))))
+                                    .WithBody(
+                                        Block(
+                                            SingletonList<StatementSyntax>(
+                                                SwitchStatement(
+                                                    IdentifierName(
+                                                        Identifier(
+                                                            TriviaList(),
+                                                            SyntaxKind.TypeKeyword,
+                                                            "type",
+                                                            "type",
+                                                            TriviaList())))
+                                                .WithSections(
+                                                    List<SwitchSectionSyntax>( _createProxy ))))),
+                                    MethodDeclaration(
+                                        PredefinedType(
+                                            Token(SyntaxKind.BoolKeyword)),
+                                        Identifier(Helpers.Tk_HasTypeId))
+                                    .WithModifiers(
+                                        TokenList(
+                                            new []{
+                                                Token(SyntaxKind.PublicKeyword),
+                                                Token(SyntaxKind.OverrideKeyword)}))
+                                    .WithParameterList(
+                                        ParameterList(
+                                            SingletonSeparatedList<ParameterSyntax>(
+                                                Parameter(
+                                                    Identifier(
+                                                        TriviaList(),
+                                                        SyntaxKind.TypeKeyword,
+                                                        "type",
+                                                        "type",
+                                                        TriviaList()))
+                                                .WithType(
+                                                    IdentifierName("Type")))))
+                                    .WithBody(
+                                        Block(
+                                            SingletonList<StatementSyntax>(
+                                                SwitchStatement(
+                                                    IdentifierName(
+                                                        Identifier(
+                                                            TriviaList(),
+                                                            SyntaxKind.TypeKeyword,
+                                                            "type",
+                                                            "type",
+                                                            TriviaList())))
+                                                .WithSections(
+                                                    List<SwitchSectionSyntax>( _hasTypeId ))))),
+                                    MethodDeclaration(
+                                        IdentifierName("Type"),
+                                        Identifier(Helpers.Tk_TypeFromId))
+                                    .WithModifiers(
+                                        TokenList(
+                                            new []{
+                                                Token(SyntaxKind.PublicKeyword),
+                                                Token(SyntaxKind.OverrideKeyword)}))
+                                    .WithParameterList(
+                                        ParameterList(
+                                            SingletonSeparatedList<ParameterSyntax>(
+                                                Parameter(
+                                                    Identifier("id"))
+                                                .WithType(
+                                                    PredefinedType(
+                                                        Token(SyntaxKind.ByteKeyword))))))
+                                    .WithBody(
+                                        Block(
+                                            SingletonList<StatementSyntax>(
+                                                SwitchStatement(
+                                                    IdentifierName("id"))
+                                                .WithSections(
+                                                    List<SwitchSectionSyntax>( _typeFromId ))))),
+                                    MethodDeclaration(
+                                        PredefinedType(
+                                            Token(SyntaxKind.ByteKeyword)),
+                                        Identifier(Helpers.Tk_TypeId))
+                                    .WithModifiers(
+                                        TokenList(
+                                            new []{
+                                                Token(SyntaxKind.PublicKeyword),
+                                                Token(SyntaxKind.OverrideKeyword)}))
+                                    .WithParameterList(
+                                        ParameterList(
+                                            SingletonSeparatedList<ParameterSyntax>(
+                                                Parameter(
+                                                    Identifier(
+                                                        TriviaList(),
+                                                        SyntaxKind.TypeKeyword,
+                                                        "type",
+                                                        "type",
+                                                        TriviaList()))
+                                                .WithType(
+                                                    IdentifierName("Type")))))
+                                    .WithBody(
+                                        Block(
+                                            SingletonList<StatementSyntax>(
+                                                SwitchStatement(
+                                                    IdentifierName(
+                                                        Identifier(
+                                                            TriviaList(),
+                                                            SyntaxKind.TypeKeyword,
+                                                            "type",
+                                                            "type",
+                                                            TriviaList())))
+                                                .WithSections(
+                                                    List<SwitchSectionSyntax>( _typeId )))))}))));
         }
 
         private static ExpressionSyntax[] CreateIdArray()
@@ -290,9 +260,6 @@ namespace OwlTree.Generator
                             .WithArgumentList(
                                 ArgumentList())))));
             
-            if (_createProxy.Last() == null)
-                throw new Exception("something something create proxies " + c.Identifier.ValueText);
-            
             _hasTypeId.Add(SwitchSection()
                 .WithLabels(
                     SingletonList<SwitchLabelSyntax>(
@@ -315,9 +282,6 @@ namespace OwlTree.Generator
                             LiteralExpression(
                                 SyntaxKind.TrueLiteralExpression)))));
             
-            if (_hasTypeId.Last() == null)
-                throw new Exception("something something has type id " + c.Identifier.ValueText);
-            
             _typeFromId.Add(SwitchSection()
                 .WithLabels(
                     SingletonList<SwitchLabelSyntax>(
@@ -330,10 +294,6 @@ namespace OwlTree.Generator
                         ReturnStatement(
                             TypeOfExpression(
                                 IdentifierName(Helpers.GetFullName(c.Identifier.ValueText, c)))))));
-
-            if (_typeFromId.Last() == null)
-                throw new Exception("something something type from id " + c.Identifier.ValueText);
-
             _typeId.Add(SwitchSection()
                 .WithLabels(
                     SingletonList<SwitchLabelSyntax>(
@@ -356,9 +316,6 @@ namespace OwlTree.Generator
                             LiteralExpression(
                                 SyntaxKind.NumericLiteralExpression,
                                 Literal(id))))));
-            
-            if (_typeId.Last() == null)
-                throw new Exception("something something type id " + c.Identifier.ValueText);
         }
 
         private static void AddDefaults()

@@ -20,21 +20,10 @@ namespace OwlTree.Generator
         // TODO: create cache to allow generator to be applied across multiple projects
         // will allow for easier add-on creation, since pre-built IEncodables, and NetworkObjects from different projects
         // can be analyzed "together".
-        // static string outputPath = "";
+        static string outputPath = "";
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            // reset generator state
-            GeneratorState.ClearEncodables();
-            GeneratorState.ClearConsts();
-            GeneratorState.ClearEnums();
-            GeneratorState.ClearTypeIds();
-            GeneratorState.ClearRpcData();
-            GeneratorState.ClearUsings();
-            // refill encodables with built in encodable types
-            IEncodableAnalyzer.AddPrimitives();
-            IEncodableAnalyzer.AddBuiltIns();
-
             // cache IEncodable types
             var encodableProvider = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: static (node, _) => node is TypeDeclarationSyntax c && Helpers.InheritsFrom(c, Helpers.Tk_IEncodable),
@@ -44,6 +33,7 @@ namespace OwlTree.Generator
             var encodableCompilation = context.CompilationProvider.Combine(encodableProvider.Collect());
 
             context.RegisterSourceOutput(encodableCompilation, IEncodableAnalyzer.CacheEncodables);
+            // File.WriteAllText(outputPath + "/encodable-out.txt", GeneratorState.GetEncodablesString());
 
             // pre-solve const and enum values
             var registryProvider = context.SyntaxProvider.CreateSyntaxProvider(
@@ -54,6 +44,8 @@ namespace OwlTree.Generator
             var registryCompilation = context.CompilationProvider.Combine(registryProvider.Collect());
 
             context.RegisterSourceOutput(registryCompilation, ConstAndEnumAnalyzer.SolveConstAndEnumValues);
+            // File.WriteAllText(outputPath + "/const-out.txt", GeneratorState.GetConstsString());
+            // File.WriteAllText(outputPath + "/enum-out.txt", GeneratorState.GetEnumsString());
 
             // generate network object proxies
             var provider = context.SyntaxProvider.CreateSyntaxProvider(
@@ -70,10 +62,16 @@ namespace OwlTree.Generator
         {
             var (compilation, list) = tuple;
 
+            GeneratorState.ClearTypeIds();
+            GeneratorState.ClearRpcData();
+            GeneratorState.ClearUsings();
+
             if (list.Length == 0) return;
 
             NetworkObjectAnalyzer.AssignTypeIds(context, list);
+            // File.WriteAllText(outputPath + "/types-out.txt", GeneratorState.GetTypeIdsString());
             NetworkObjectAnalyzer.AssignRpcIds(context, list);
+            // File.WriteAllText(outputPath + "/rpc-out.txt", GeneratorState.GetRpcIdsString());
 
             ProxyFactoryGenerator.Reset();
             
@@ -82,10 +80,12 @@ namespace OwlTree.Generator
                 var proxy = ProxyGenerator.CreateProxy(c);
                 ProxyFactoryGenerator.AddClass(c);
                 context.AddSource(ProxyGenerator.GetProxyName(c) + Helpers.Tk_CsFile, proxy.ToString());
+                // File.WriteAllText(outputPath + "/" + ProxyGenerator.GetProxyName(c) + Helpers.Tk_DebugFile, proxy.ToString());
             }
-        
+
             var factory = ProxyFactoryGenerator.GetFactory().NormalizeWhitespace();
             context.AddSource(Helpers.Tk_ProjectProxies + Helpers.Tk_CsFile, factory.ToString());
+            // File.WriteAllText(outputPath + "/" + Helpers.Tk_ProjectProxies + Helpers.Tk_DebugFile, factory.ToString());
 
             RpcProtocolsGenerator.Reset();
 
@@ -96,6 +96,7 @@ namespace OwlTree.Generator
 
             var protocols = RpcProtocolsGenerator.GetRpcProtocols();
             context.AddSource(Helpers.Tk_ProjectProtocols + Helpers.Tk_CsFile, protocols.ToString());
+            // File.WriteAllText(outputPath + "/" + Helpers.Tk_ProjectProtocols + Helpers.Tk_DebugFile, protocols.ToString());
         }
 
         

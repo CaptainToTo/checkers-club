@@ -1,8 +1,6 @@
 
-using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.IO;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -72,6 +70,10 @@ namespace OwlTree.Generator
         {
             var (compilation, list) = tuple;
 
+            GeneratorState.ClearEncodables();
+            AddPrimitives();
+            AddBuiltIns();
+
             if (list.Length == 0)
                 return;
             
@@ -86,9 +88,7 @@ namespace OwlTree.Generator
                 if (!GeneratorState.HasEncodable(names.Last()))
                 {
                     foreach (var name in names)
-                    {
                         GeneratorState.AddEncodable(name, isVariable);
-                    }
                 }
             }
         }

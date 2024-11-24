@@ -117,7 +117,6 @@ namespace OwlTree
             public string addr;
             public int tcpPort;
             public int serverUdpPort;
-            public int clientUdpPort;
 
             public int bufferSize;
 
@@ -171,7 +170,6 @@ namespace OwlTree
             Address = IPAddress.Parse(args.addr);
             TcpPort = args.tcpPort;
             ServerUdpPort = args.serverUdpPort;
-            ClientUdpPort = args.clientUdpPort;
             BufferSize = args.bufferSize;
             ReadBuffer = new byte[BufferSize];
             TryDecode = args.decoder;
@@ -407,7 +405,7 @@ namespace OwlTree
         /// <summary>
         /// The number of bytes required to encode a new connection request.
         /// </summary>
-        protected static int ConnectionRequestLength { get { return RpcId.MaxLength() + AppId.MaxLength() + 4; } }
+        protected static int ConnectionRequestLength { get { return RpcId.MaxLength() + AppId.MaxLength(); } }
 
         protected static void ClientConnectEncode(Span<byte> bytes, ClientId id)
         {
@@ -435,26 +433,23 @@ namespace OwlTree
             id.InsertBytes(bytes.Slice(ind, id.ByteLength()));
         }
 
-        protected static void ConnectionRequestEncode(Span<byte> bytes, AppId id, int port)
+        protected static void ConnectionRequestEncode(Span<byte> bytes, AppId id)
         {
             var rpc = new RpcId(RpcId.CONNECTION_REQUEST);
             var ind = rpc.ByteLength();
             rpc.InsertBytes(bytes);
             id.InsertBytes(bytes.Slice(ind));
-            BitConverter.TryWriteBytes(bytes.Slice(ind + id.ByteLength()), port);
         }
 
-        protected static RpcId ServerMessageDecode(ReadOnlySpan<byte> bytes, out AppId id, out int udpPort)
+        protected static RpcId ServerMessageDecode(ReadOnlySpan<byte> bytes, out AppId id)
         {
             RpcId result = RpcId.None;
             result.FromBytes(bytes);
             id = new AppId();
-            udpPort = 0;
             switch (result.Id)
             {
                 case RpcId.CONNECTION_REQUEST:
                     id.FromBytes(bytes.Slice(result.ByteLength()));
-                    udpPort = BitConverter.ToInt32(bytes.Slice(result.ByteLength() + id.ByteLength()));
                     break;
             }
             return result;

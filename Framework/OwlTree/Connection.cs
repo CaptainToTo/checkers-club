@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 
 namespace OwlTree
@@ -44,10 +43,6 @@ namespace OwlTree
             /// The port the server will listen to for UDP packets. <b>Default = 9000</b>
             /// </summary>
             public int serverUdpPort = 9000;
-            /// <summary>
-            /// The port the client will listen to for UDP packets. <b>Default = 9010</b>
-            /// </summary>
-            public int clientUdpPort = 9010;
             /// <summary>
             /// The maximum number of clients the server will allow to be connected at once.
             /// <b>Default = 4</b>
@@ -181,7 +176,6 @@ namespace OwlTree
                 addr = args.serverAddr,
                 tcpPort = args.tcpPort,
                 serverUdpPort = args.serverUdpPort,
-                clientUdpPort = args.clientUdpPort,
                 bufferSize = args.bufferSize,
                 encoder = EncodeRpc,
                 decoder = TryDecodeRpc,
@@ -289,6 +283,16 @@ namespace OwlTree
         /// </summary>
         public Role NetRole { get; private set; }
 
+        /// <summary>
+        /// Returns true if this connection is configured to be a server.
+        /// </summary>
+        public bool IsServer { get => NetRole == Role.Server; }
+
+        /// <summary>
+        /// Returns true if this connection is configured to be a client.
+        /// </summary>
+        public bool IsClient { get => NetRole == Role.Client; }
+
         private NetworkBuffer _buffer;
 
         private enum ConnectionEventType
@@ -310,9 +314,9 @@ namespace OwlTree
         public IEnumerable<ClientId> Clients { get { return _clients; } }
 
         /// <summary>
-        /// Returns true if the given ClientId currently exists on this connection.
+        /// Returns true if the given client id currently exists on this connection.
         /// </summary>
-        public bool ContainsClient(ClientId id) => _clients.Any(c => c == id);
+        public bool ContainsClient(ClientId id) => _clients.Contains(id);
 
         /// <summary>
         /// Invoked when a new client connects. Provides the id of the new client.
