@@ -416,6 +416,7 @@ namespace OwlTree
                         IsReady = true;
                         if (_logger.includes.clientEvents)
                             _logger.Write("Connection is ready. Local client id is: " + result.id.ToString());
+                        _clients.Add(result.id);
                         OnReady?.Invoke(result.id);
                         break;
                 }

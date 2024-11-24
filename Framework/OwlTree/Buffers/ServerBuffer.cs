@@ -197,6 +197,8 @@ namespace OwlTree
                         span = clientData.tcpPacket.GetSpan(ClientMessageLength);
                         ClientConnectEncode(span, otherClient.id);
                     }
+
+                    HasClientEvent = true;
                     
                     clientData.tcpPacket.header.timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     ApplySendSteps(clientData.tcpPacket);
@@ -343,6 +345,8 @@ namespace OwlTree
                                 var span = otherClient.tcpPacket.GetSpan(ClientMessageLength);
                                 ClientDisconnectEncode(span, client.id);
                             }
+
+                            HasClientEvent = true;
                             continue;
                         }
 
@@ -467,6 +471,8 @@ namespace OwlTree
                     client.udpPacket.Reset();
                 }
             }
+
+            HasClientEvent = false;
         }
 
         /// <summary>
@@ -500,7 +506,10 @@ namespace OwlTree
                 {
                     var span = otherClient.tcpPacket.GetSpan(ClientMessageLength);
                     ClientDisconnectEncode(span, client.id);
+                    Console.WriteLine("send disconnection to " + client.id);
                 }
+
+                HasClientEvent = true;
             }
         }
     }

@@ -184,11 +184,12 @@ public class UI
 
     private void ShowPlayers()
     {
+        players!.CheckPlayers();
         var str = "\nPlayers:\n";
-
+        
         foreach (var pair in players!.GetNames())
         {
-            str += "  " + name + " ";
+            str += "  (" + pair.id.Id + ") " + pair.name + " ";
             if (pair.name == name)
                 str += "(you)";
             else if (boards!.IsPlaying(pair.id))

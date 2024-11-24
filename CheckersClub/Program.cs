@@ -28,15 +28,15 @@ public class Program
         }
         else if (args[0] == "client")
         {
-            File.WriteAllText("OwlTreeClient.log", "");
+            // File.WriteAllText("OwlTreeClient.log", "");
             var client = new Connection(new Connection.Args
             {
                 appId = "CheckersClub_OwlTreeExample",
                 role = Connection.Role.Client,
                 serverAddr = "127.0.0.1",
                 threadUpdateDelta = 500,
-                printer = ClientLog,
-                verbosity = Logger.Includes().All()
+                // printer = ClientLog,
+                // verbosity = Logger.Includes().All()
             });
             client.OnReady += (_) => Console.WriteLine("connected!");
             var ui = new UI();
@@ -76,6 +76,7 @@ public class Program
         {
             connection.ExecuteQueue();
             curState.Invoke(connection, ui);
+            connection.ExecuteQueue();
             Thread.Sleep(200);
         }
         Console.WriteLine("disconnected...");

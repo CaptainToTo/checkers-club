@@ -8,10 +8,21 @@ public class PlayerManager : NetworkObject
     {
         Instance = this;
         Connection.OnClientDisconnected += RemovePlayer;
+        if (Connection.NetRole == Connection.Role.Server)
+            Connection.OnClientConnected += (id) => SendPlayers(id, _players);
         Console.WriteLine("player manager init...");
     }
 
-    private NetworkDict<Capacity16, ClientId, NetworkString<Capacity32>> _players = new();
+    public NetworkDict<Capacity16, ClientId, NetworkString<Capacity32>> _players = new();
+
+    public void CheckPlayers()
+    {
+        foreach (var id in _players.Keys.ToArray())
+        {
+            if (!Connection.ContainsClient(id))
+                RemovePlayer(id);
+        }
+    }
 
     public IEnumerable<(ClientId id, string name)> GetNames()
     {
@@ -36,7 +47,9 @@ public class PlayerManager : NetworkObject
     private void RemovePlayer(ClientId id)
     {
         if (_players.ContainsKey(id))
+        {
             _players.Remove(id);
+        }
     }
 
     [Rpc(RpcCaller.Server)]
