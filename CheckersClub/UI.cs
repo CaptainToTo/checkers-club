@@ -92,7 +92,9 @@ public class UI
 
     private void StartGame(ClientId id1, ClientId id2, CheckersBoard board)
     {
-        Console.WriteLine("\nNew game, '" + players!.GetName(id1) + "' vs '" + players!.GetName(id2) + "'\n" + board.ToString());
+        bool id1IsRed = id1 == board.RedPlayer;
+        bool id2IsRed = id2 == board.RedPlayer;
+        Console.WriteLine($"\nNew game, '{players!.GetName(id1)}' ({(id1IsRed ? 'R' : 'B')}) vs '{players!.GetName(id2)}' ({(id2IsRed ? 'R' : 'B')})\n" + board.ToString());
         if (board.NextTurn != players!.Connection.LocalId)
             Console.WriteLine("\nwaiting for " + players!.GetName(board.NextTurn) +"'s move...\n");
         Program.curState = ClientStates.InGame;

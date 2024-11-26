@@ -79,6 +79,7 @@ public class BoardManager : NetworkObject
         if (Connection.NetRole == Connection.Role.Server)
         {
             var board = new CheckersBoard(curBoardId);
+            board.ResetBoard(redPlayer, blackPlayer);
             _boards.Add(board.Id, board);
             curBoardId++;
 
