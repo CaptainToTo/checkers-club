@@ -20,7 +20,7 @@ namespace OwlTree.Generator
         // TODO: create cache to allow generator to be applied across multiple projects
         // will allow for easier add-on creation, since pre-built IEncodables, and NetworkObjects from different projects
         // can be analyzed "together".
-        static string outputPath = "";
+        // static string outputPath = "";
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
