@@ -2,19 +2,19 @@ using OwlTree;
 
 public struct BoardCell : IEncodable
 {
-    public int x;
-    public int y;
+    public int row;
+    public int col;
 
     public BoardCell()
     {
-        x = 0;
-        y = 0;
+        row = 0;
+        col = 0;
     }
 
     public BoardCell(int x, int y)
     {
-        this.x = x;
-        this.y = y;
+        this.row = x;
+        this.col = y;
     }
 
     public int ByteLength()
@@ -24,19 +24,19 @@ public struct BoardCell : IEncodable
 
     public void FromBytes(ReadOnlySpan<byte> bytes)
     {
-        x = BitConverter.ToInt32(bytes);
-        y = BitConverter.ToInt32(bytes.Slice(4));
+        row = BitConverter.ToInt32(bytes);
+        col = BitConverter.ToInt32(bytes.Slice(4));
     }
 
     public void InsertBytes(Span<byte> bytes)
     {
-        BitConverter.TryWriteBytes(bytes, x);
-        BitConverter.TryWriteBytes(bytes.Slice(4), y);
+        BitConverter.TryWriteBytes(bytes, row);
+        BitConverter.TryWriteBytes(bytes.Slice(4), col);
     }
 
     public override string ToString()
     {
-        return $"{RowChar(x)}{y}";
+        return $"{RowChar(row)}{col + 1}";
     }
 
     private static char RowChar(int r)
@@ -59,14 +59,14 @@ public struct BoardCell : IEncodable
     {
         switch(r)
         {
-            case 'a': return 0;
-            case 'b': return 1;
-            case 'c': return 2;
-            case 'd': return 3;
-            case 'e': return 4;
-            case 'f': return 5;
-            case 'g': return 6;
-            case 'h': return 7;
+            case 'a': case 'A': return 0;
+            case 'b': case 'B': return 1;
+            case 'c': case 'C': return 2;
+            case 'd': case 'D': return 3;
+            case 'e': case 'E': return 4;
+            case 'f': case 'F': return 5;
+            case 'g': case 'G': return 6;
+            case 'h': case 'H': return 7;
         }
         return -1;
     }
@@ -74,11 +74,11 @@ public struct BoardCell : IEncodable
     public static bool FromString(string str, out BoardCell cell)
     {
         cell = new BoardCell();
-        cell.x = RowNum(str[0]);
-        if (cell.x == -1)
+        cell.row = RowNum(str[0]);
+        if (cell.row == -1)
             return false;
-        cell.y = int.Parse(str.Substring(1));
-        if (cell.y < 0 || 8 <= cell.y)
+        cell.col = int.Parse(str.Substring(1)) - 1;
+        if (cell.col < 0 || 8 <= cell.col)
             return false;
         return true;
     }

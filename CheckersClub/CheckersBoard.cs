@@ -26,12 +26,12 @@ public class CheckersBoard
 
     public CellState GetCell(BoardCell cell)
     {
-        return _board[cell.x][cell.y];
+        return _board[cell.row][cell.col];
     }
 
     public void SetCell(BoardCell cell, CellState state)
     {
-        _board[cell.x][cell.y] = state;
+        _board[cell.row][cell.col] = state;
     }
 
     private static char RowChar(int r)
@@ -81,6 +81,8 @@ public class CheckersBoard
     public int Turn { get; private set; } = 0;
 
     public ClientId NextTurn { get { return Turn % 2 == 0 ? RedPlayer : BlackPlayer; } }
+
+    public CellState NextTurnPiece { get { return NextTurn == RedPlayer ? CellState.Red : CellState.Black; } }
 
     public bool IsAPlayer(ClientId client)
     {
@@ -183,6 +185,7 @@ public class CheckersBoard
         var player = GetCell(from);
         SetCell(from, CellState.Empty);
         SetCell(to, player);
+        Turn++;
 
         if (GetCell(InBetween(from, to)) == GetOppositePlayer(player))
         {
@@ -191,7 +194,6 @@ public class CheckersBoard
             return MoveResult.Captured;
         }
 
-        Turn++;
         return MoveResult.Moved;
     }
 
@@ -201,10 +203,16 @@ public class CheckersBoard
         if (GetCell(to) != CellState.Empty) return false;
         if (!IsOnBoard(to)) return false;
 
+        if (GetCell(from) != NextTurnPiece) return false;
+
         if (GetCell(from) == CellState.Black && !IsValidBlackDir(from, to))
+        {
             return false;
+        }
         else if (GetCell(from) == CellState.Red && !IsValidRedDir(from, to))
+        {
             return false;
+        }
 
         if (Steps(from, to) > 1)
         {
@@ -217,39 +225,35 @@ public class CheckersBoard
 
     private bool IsOnBoard(BoardCell cell)
     {
-        if (cell.x < 0 || BoardSize <= cell.x) return false;
-        if (cell.y < 0 || BoardSize <= cell.y) return false;
+        if (cell.row < 0 || BoardSize <= cell.row) return false;
+        if (cell.col < 0 || BoardSize <= cell.col) return false;
         return true;
     }
 
     private bool IsValidBlackDir(BoardCell from, BoardCell to)
     {
-        if (from.x == to.x) return false;
-        if (from.y >= to.y) return false;
-        return true;
+        return from.row > to.row;
     }
 
     private bool IsValidRedDir(BoardCell from, BoardCell to)
     {
-        if (from.x == to.x) return false;
-        if (from.y <= to.y) return false;
-        return true;
+        return from.row < to.row;
     }
 
     private int Steps(BoardCell from, BoardCell to)
     {
-        return Math.Abs(from.x - to.x);
+        return Math.Abs(from.row - to.row);
     }
 
     private BoardCell InBetween(BoardCell from, BoardCell to)
     {
         var dir = Dir(from, to);
-        return new BoardCell(from.x + dir.x, from.y + dir.y);
+        return new BoardCell(from.row + dir.row, from.col + dir.col);
     }
 
     private BoardCell Dir(BoardCell from, BoardCell to)
     {
-        return new BoardCell(to.x - from.x > 0 ? 1 : -1, to.y - from.y > 0 ? 1 : -1);
+        return new BoardCell(to.row - from.row > 0 ? 1 : -1, to.col - from.col > 0 ? 1 : -1);
     }
 
     private CellState GetOppositePlayer(CellState player)
