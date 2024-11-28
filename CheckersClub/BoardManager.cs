@@ -7,6 +7,7 @@ public class BoardManager : NetworkObject
     public override void OnSpawn()
     {
         Instance = this;
+        Connection.OnClientDisconnected += RemovePlayer;
         Console.WriteLine("board manager init...");
     }
 
@@ -15,6 +16,39 @@ public class BoardManager : NetworkObject
     public bool IsPlaying(ClientId id)
     {
         return _boards.Any(p => p.Value.IsAPlayer(id));
+    }
+
+    public void RemovePlayer(ClientId id)
+    {
+        if (Connection.IsClient) return;
+
+        for (int i = 0; i < _challenges.Count; i++)
+        {
+            if (_challenges[i].challenged == id || _challenges[i].challenger == id)
+            {
+                _challenges.RemoveAt(i);
+                i--;
+            }
+        }
+
+        if (IsPlaying(id))
+        {
+            var board = _boards.Where(p => p.Value.IsAPlayer(id)).FirstOrDefault().Value;
+            var player = board.RedPlayer == id ? board.BlackPlayer : board.RedPlayer;
+            OpponentDisconnected(player, board.Id);
+        }
+    }
+
+    public Action<ClientId>? OnOpponentDisconnected;
+    [Rpc(RpcCaller.Server)]
+    public virtual void OpponentDisconnected([RpcCallee] ClientId callee, int id)
+    {
+        if (_boards.TryGetValue(id, out var board))
+        {
+            var other = board.RedPlayer == callee ? board.BlackPlayer : board.RedPlayer;
+            OnOpponentDisconnected?.Invoke(other);
+            _boards.Remove(id);
+        }
     }
 
     private List<(ClientId challenger, ClientId challenged)> _challenges = new();
@@ -48,6 +82,13 @@ public class BoardManager : NetworkObject
         OnChallengeRejected?.Invoke(player);
     }
 
+    public Action? OnChallengeFailed;
+    [Rpc(RpcCaller.Server)]
+    public virtual void ChallengeFailed([RpcCallee] ClientId callee)
+    {
+        OnChallengeFailed?.Invoke();
+    }
+
     public Action<ClientId>? OnChallengeReceived;
     [Rpc(RpcCaller.Server)]
     public virtual void SendChallenge([RpcCallee] ClientId callee, ClientId challenger)
@@ -60,9 +101,9 @@ public class BoardManager : NetworkObject
     {
         if (!_challenges.Contains((challenger, caller)))
         {
-            return;
+            ChallengeFailed(caller);
         }
-        if (!response)
+        else if (!response)
         {
             RejectChallenge(challenger, caller);
         }

@@ -33,6 +33,8 @@ public class UI
         this.boards.OnRequestMove += GetMove;
         this.boards.OnMoveReceived += DisplayMove;
         this.boards.OnGameOver += GameOver;
+        this.boards.OnChallengeFailed += ChallengeFailed;
+        this.boards.OnOpponentDisconnected += OpponentDisconnected;
     }
 
     private void DisplayMove(CheckersBoard board, ClientId player, BoardCell from, BoardCell to)
@@ -98,6 +100,18 @@ public class UI
         if (board.NextTurn != players!.Connection.LocalId)
             Console.WriteLine("\nwaiting for " + players!.GetName(board.NextTurn) +"'s move...\n");
         Program.curState = ClientStates.InGame;
+    }
+
+    private void ChallengeFailed()
+    {
+        Console.WriteLine("Game failed...\n");
+        Program.curState = ClientStates.GetCommand;
+    }
+
+    private void OpponentDisconnected(ClientId id)
+    {
+        Console.WriteLine("Game ended, your opponent disconnected...\n");
+        Program.curState = ClientStates.GetCommand;
     }
 
     private void ChallengeReceived(ClientId id)
