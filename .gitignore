@@ -5,6 +5,7 @@
 
 SecretConsts.cs
 packages
+OwlTreeEnv.cs
 
 # User-specific files
 *.rsuser
