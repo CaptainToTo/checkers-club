@@ -2,6 +2,8 @@
 
 public class Program
 {
+    public static long id = 0;
+
     static void Main(string[] args)
     {
         if (args[0] == "server")
@@ -28,15 +30,18 @@ public class Program
         }
         else if (args[0] == "client")
         {
-            // File.WriteAllText("OwlTreeClient.log", "");
+            id = new Random(DateTime.UtcNow.Millisecond).NextInt64();
+            Console.WriteLine("client log id is " + id.ToString());
+
+            File.WriteAllText($"OwlTreeClient{id}.log", "");
             var client = new Connection(new Connection.Args
             {
                 appId = "CheckersClub_OwlTreeExample",
                 role = Connection.Role.Client,
                 serverAddr = "127.0.0.1",
                 threadUpdateDelta = 500,
-                // printer = ClientLog,
-                // verbosity = Logger.Includes().All()
+                printer = ClientLog,
+                verbosity = Logger.Includes().All()
             });
             client.OnReady += (_) => Console.WriteLine("connected!");
             var ui = new UI();
@@ -82,5 +87,5 @@ public class Program
         Console.WriteLine("disconnected...");
         Environment.Exit(0);
     }
-    static void ClientLog(string text) => File.AppendAllText("OwlTreeClient.log", text);
+    static void ClientLog(string text) => File.AppendAllText($"OwlTreeClient{id}.log", text);
 }
