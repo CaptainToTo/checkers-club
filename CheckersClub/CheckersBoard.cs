@@ -242,7 +242,7 @@ public class CheckersBoard
 
     private int Steps(BoardCell from, BoardCell to)
     {
-        return Math.Abs(from.row - to.row);
+        return Math.Abs(from.row - to.row) + (Math.Abs(from.col - to.col) > 1 ? 1 : 0);
     }
 
     private BoardCell InBetween(BoardCell from, BoardCell to)

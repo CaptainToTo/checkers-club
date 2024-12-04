@@ -36,6 +36,7 @@ public class BoardManager : NetworkObject
             var board = _boards.Where(p => p.Value.IsAPlayer(id)).FirstOrDefault().Value;
             var player = board.RedPlayer == id ? board.BlackPlayer : board.RedPlayer;
             OpponentDisconnected(player, board.Id);
+            _boards.Remove(board.Id);
         }
     }
 

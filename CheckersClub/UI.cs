@@ -57,7 +57,7 @@ public class UI
         bool goodResponse = false;
         while (!goodResponse)
         {
-            Console.Write("your move (ex: 'b2 to c4'): ");
+            Console.Write("your move (ex: 'b2 to c3'): ");
             var response = Console.ReadLine() ?? "";
             var tokens = response.Split(' ');
             if (tokens.Length != 3)
