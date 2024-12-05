@@ -14,6 +14,8 @@ public class Program
         logId = new Random(DateTime.UtcNow.Millisecond).NextInt64();
         Console.WriteLine("log id is " + logId.ToString());
 
+        string addr = args.Length >= 2 ? args[1] : "127.0.0.1";
+
         if (args[0] == "server")
         {
             File.WriteAllText($"OwlTreeServer{logId}.log", "");
@@ -21,7 +23,7 @@ public class Program
             {
                 appId = AppId,
                 role = Connection.Role.Server,
-                serverAddr = "127.0.0.1",
+                serverAddr = addr,
                 maxClients = 16,    // 16 clients per server
                 threaded = false,   // server is single threaded since it doesn't need to run update logic
                 printer = ServerLog,
@@ -44,7 +46,7 @@ public class Program
             {
                 appId = AppId,
                 role = Connection.Role.Client,
-                serverAddr = "127.0.0.1",
+                serverAddr = addr,
                 threadUpdateDelta = 500,    // clients are multithreaded, they will recv&send every half sec
                 printer = ClientLog,
                 verbosity = Logger.Includes().All()
