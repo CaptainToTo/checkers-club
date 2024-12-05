@@ -1,6 +1,8 @@
 
 using OwlTree;
 
+// all client cli handled here
+
 public enum Command
 {
     Quit,
@@ -9,7 +11,6 @@ public enum Command
     Help,
     Failed
 }
-
 
 public class UI
 {

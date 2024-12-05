@@ -1,7 +1,11 @@
 using OwlTree;
 
+/// <summary>
+/// int vector2 for accessing cells in a checkers board. Implements IEncodable
+/// </summary>
 public struct BoardCell : IEncodable
 {
+    // coords
     public int row;
     public int col;
 
@@ -13,14 +17,13 @@ public struct BoardCell : IEncodable
 
     public BoardCell(int x, int y)
     {
-        this.row = x;
-        this.col = y;
+        row = x;
+        col = y;
     }
 
-    public int ByteLength()
-    {
-        return 8;
-    }
+    // encoded as [row:4b][col:4b]
+
+    public int ByteLength() => 8;
 
     public void FromBytes(ReadOnlySpan<byte> bytes)
     {
@@ -34,12 +37,10 @@ public struct BoardCell : IEncodable
         BitConverter.TryWriteBytes(bytes.Slice(4), col);
     }
 
-    public override string ToString()
-    {
-        return $"{RowChar(row)}{col + 1}";
-    }
+    // converts row to a char like "A3" or "D2", col number is 1-indexed
+    public override string ToString() => $"{RowChar(row)}{col + 1}";
 
-    private static char RowChar(int r)
+    public static char RowChar(int r)
     {
         switch(r)
         {
@@ -55,7 +56,7 @@ public struct BoardCell : IEncodable
         return '_';
     }
 
-    private static int RowNum(char r)
+    public static int RowNum(char r)
     {
         switch(r)
         {
@@ -71,6 +72,10 @@ public struct BoardCell : IEncodable
         return -1;
     }
 
+    /// <summary>
+    /// parses a board cell from a string formatted as row letter - column number,
+    /// like "A3" or "D2", col number is 1-indexed. Returns true if the cell was successfully parsed, false otherwise.
+    /// </summary>
     public static bool FromString(string str, out BoardCell cell)
     {
         cell = new BoardCell();

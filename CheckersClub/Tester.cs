@@ -1,6 +1,7 @@
 
 using OwlTree;
 
+// simple testing interface for checkers board, plays the game locally
 public static class Tester
 {
     public static void RunTests()

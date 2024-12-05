@@ -1,5 +1,8 @@
 using OwlTree;
 
+/// <summary>
+/// Singleton manages game states across clients
+/// </summary>
 public class BoardManager : NetworkObject
 {
     public static BoardManager? Instance { get; private set; } = null;
@@ -11,13 +14,17 @@ public class BoardManager : NetworkObject
         Console.WriteLine("board manager init...");
     }
 
+    // manages all active boards, clients will only have the board they are assigned to for their game
     private Dictionary<int, CheckersBoard> _boards = new();
 
-    public bool IsPlaying(ClientId id)
-    {
-        return _boards.Any(p => p.Value.IsAPlayer(id));
-    }
+    /// <summary>
+    /// True if the given client id is currently in a game.
+    /// </summary>
+    public bool IsPlaying(ClientId id) => _boards.Any(p => p.Value.IsAPlayer(id));
 
+    /// <summary>
+    /// Cancels any challenges the player has made, and ends the game they are if they are in one.
+    /// </summary>
     public void RemovePlayer(ClientId id)
     {
         if (Connection.IsClient) return;
@@ -40,6 +47,7 @@ public class BoardManager : NetworkObject
         }
     }
 
+    // send to players if their opponent disconnected mid-game
     public Action<ClientId>? OnOpponentDisconnected;
     [Rpc(RpcCaller.Server)]
     public virtual void OpponentDisconnected([RpcCallee] ClientId callee, int id)
@@ -52,13 +60,19 @@ public class BoardManager : NetworkObject
         }
     }
 
+    // * Challenges
+
+    // only used by server to track which players are currently awaiting challenge responses
     private List<(ClientId challenger, ClientId challenged)> _challenges = new();
 
+    // only used by clients to track whether they are waiting for a challenge response
     public bool IsChallenging { get; private set; } = false;
 
+    // send a challenge request to the server
     [Rpc(RpcCaller.Client, InvokeOnCaller = true)]
     public virtual void ChallengePlayer(ClientId player, [RpcCaller] ClientId caller = default)
     {
+        // validate request on server
         if (Connection.NetRole == Connection.Role.Server)
         {
             if (!Connection.ContainsClient(player) || IsPlaying(player) || IsPlaying(caller))
@@ -69,12 +83,14 @@ public class BoardManager : NetworkObject
             _challenges.Add((caller, player));
             SendChallenge(player, caller);
         }
+        // set challenging state on client
         else
         {
             IsChallenging = true;
         }
     }
 
+    // notify a player their challenge was rejected
     public Action<ClientId>? OnChallengeRejected;
     [Rpc(RpcCaller.Server)]
     public virtual void RejectChallenge([RpcCallee] ClientId callee, ClientId player)
@@ -83,13 +99,7 @@ public class BoardManager : NetworkObject
         OnChallengeRejected?.Invoke(player);
     }
 
-    public Action? OnChallengeFailed;
-    [Rpc(RpcCaller.Server)]
-    public virtual void ChallengeFailed([RpcCallee] ClientId callee)
-    {
-        OnChallengeFailed?.Invoke();
-    }
-
+    // send a challenge to the player being challenged
     public Action<ClientId>? OnChallengeReceived;
     [Rpc(RpcCaller.Server)]
     public virtual void SendChallenge([RpcCallee] ClientId callee, ClientId challenger)
@@ -97,66 +107,122 @@ public class BoardManager : NetworkObject
         OnChallengeReceived?.Invoke(challenger);
     }
 
+    // player being challenged notifies the server of their response, true if challenge accepted
     [Rpc(RpcCaller.Client)]
     public virtual void ChallengeResponse(ClientId challenger, bool response, [RpcCaller] ClientId caller = default)
     {
         if (!_challenges.Contains((challenger, caller)))
-        {
             ChallengeFailed(caller);
-        }
-        else if (!response)
-        {
-            RejectChallenge(challenger, caller);
-        }
-        else
-        {
+        else if (response)
             NewGame(challenger, caller);
-        }
+        else
+            RejectChallenge(challenger, caller);
     }
 
+    // notify a player their challenge response failed
+    public Action? OnChallengeFailed;
+    [Rpc(RpcCaller.Server)]
+    public virtual void ChallengeFailed([RpcCallee] ClientId callee)
+    {
+        OnChallengeFailed?.Invoke();
+    }
+
+    // * Game State Management
+
+    // used by server to track current board id, each new board gets a unique id
     private int curBoardId = 0;
 
+    /// <summary>
+    /// Starts a new game of checkers between 2 players.
+    /// </summary>
     public void NewGame(ClientId redPlayer, ClientId blackPlayer)
     {
         if (Connection.NetRole == Connection.Role.Server)
         {
+            // create a new board
             var board = new CheckersBoard(curBoardId);
             board.ResetBoard(redPlayer, blackPlayer);
             _boards.Add(board.Id, board);
             curBoardId++;
 
+            // send the new board to only the involved players
             AddNewBoard(redPlayer, board.Id, blackPlayer, true);
             AddNewBoard(blackPlayer, board.Id, redPlayer, false);
 
+            // start the game, red goes first
             RequestMove(board.NextTurn, board.Id);
         }
     }
 
+    // start the game on clients
     public Action<ClientId, ClientId, CheckersBoard>? OnGameStart;
-
-    [Rpc(RpcCaller.Server, InvokeOnCaller = false)]
+    [Rpc(RpcCaller.Server)]
     public virtual void AddNewBoard([RpcCallee] ClientId callee, int id, ClientId otherPlayer, bool isRed)
     {
         if (_boards.ContainsKey(id)) return;
+
+        // create a board matching the server
         var board = new CheckersBoard(id);
         _boards.Add(id, board);
 
+        // if the local player (callee) is the red player, callee is the first arg
         if (isRed)
             board.ResetBoard(callee, otherPlayer);
         else
             board.ResetBoard(otherPlayer, callee);
 
-        if (Connection.NetRole == Connection.Role.Client)
-            OnGameStart?.Invoke(callee, otherPlayer, board);
+        OnGameStart?.Invoke(callee, otherPlayer, board);
     }
 
-    [Rpc(RpcCaller.Server, InvokeOnCaller = true)]
-    public virtual void RemoveBoard([RpcCallee] ClientId callee, int id)
+    // server requests the next move from the next player's turn
+    public Action<CheckersBoard>? OnRequestMove;
+    [Rpc(RpcCaller.Server)]
+    public virtual void RequestMove([RpcCallee] ClientId callee, int boardId)
     {
-        if (_boards.ContainsKey(id))
-            _boards.Remove(id);
+        if (!_boards.TryGetValue(boardId, out var board))
+            return;
+        OnRequestMove?.Invoke(board);
     }
 
+    // client sends their selected move
+    [Rpc(RpcCaller.Client)]
+    public virtual void MakeMove(int boardId, BoardCell from, BoardCell to, [RpcCaller] ClientId caller = default)
+    {
+        if (!_boards.TryGetValue(boardId, out var board))
+            return;
+
+        // players can only make moves on the board they're a player of
+        if (!board.IsAPlayer(caller))
+            return;
+
+        // validate the move, if the move isn't valid, enforce the board state on the player
+        if (!board.ValidateMove(from, to))
+        {
+            EnforceBoardState(caller, boardId, board.BoardToLists());
+            return;
+        }
+        
+        // move piece and send the move to both players
+        var result = board.MovePiece(from, to);
+        EnforceMove(board.RedPlayer, boardId, caller, from, to);
+        EnforceMove(board.BlackPlayer, boardId, caller, from, to);
+
+        // if a player has won, declare game over
+        if (board.IsGameOver)
+        {
+            DeclareWinner(board.RedPlayer, board.Winner);
+            DeclareWinner(board.BlackPlayer, board.Winner);
+            RemoveBoard(board.RedPlayer, boardId);
+            RemoveBoard(board.BlackPlayer, boardId);
+        }
+        // otherwise, get the next move from the other player
+        else
+        {
+            RequestMove(board.NextTurn, board.Id);
+        }
+    }
+
+    // server sends up-to-date game state to fix clients who might have de-synced
     [Rpc(RpcCaller.Server)]
     public virtual void EnforceBoardState([RpcCallee] ClientId callee, int id, NetworkList<Capacity8, NetworkList<Capacity8, byte>> state)
     {
@@ -164,6 +230,7 @@ public class BoardManager : NetworkObject
             board.SetState(state);
     }
     
+    // server sends new move to players after validating
     public Action<CheckersBoard, ClientId, BoardCell, BoardCell>? OnMoveReceived;
     [Rpc(RpcCaller.Server)]
     public virtual void EnforceMove([RpcCallee] ClientId callee, int boardId, ClientId player, BoardCell from, BoardCell to)
@@ -175,57 +242,16 @@ public class BoardManager : NetworkObject
         }
     }
 
-    [Rpc(RpcCaller.Client, InvokeOnCaller = true)]
-    public virtual void MakeMove(int boardId, BoardCell from, BoardCell to, [RpcCaller] ClientId caller = default)
+    // remove the board for the client at the end of the game
+    [Rpc(RpcCaller.Server, InvokeOnCaller = true)]
+    public virtual void RemoveBoard([RpcCallee] ClientId callee, int id)
     {
-        if (!_boards.TryGetValue(boardId, out var board))
-            return;
-
-        if (Connection.NetRole == Connection.Role.Server)
-        {
-            if (!board.IsAPlayer(caller))
-                return;
-
-            if (!board.ValidateMove(from, to))
-            {
-                EnforceBoardState(caller, boardId, board.BoardToLists());
-                return;
-            }
-            
-            var result = board.MovePiece(from, to);
-            EnforceMove(board.RedPlayer, boardId, caller, from, to);
-            EnforceMove(board.BlackPlayer, boardId, caller, from, to);
-
-            if (board.IsGameOver)
-            {
-                DeclareWinner(board.RedPlayer, board.Winner);
-                DeclareWinner(board.BlackPlayer, board.Winner);
-                RemoveBoard(board.RedPlayer, boardId);
-                RemoveBoard(board.BlackPlayer, boardId);
-            }
-            else
-            {
-                RequestMove(board.NextTurn, board.Id);
-            }
-        }
-        else
-        {
-            var result = board.MovePiece(from, to);
-        }
+        if (_boards.ContainsKey(id))
+            _boards.Remove(id);
     }
 
-    public Action<CheckersBoard>? OnRequestMove;
-
-    [Rpc(RpcCaller.Server)]
-    public virtual void RequestMove([RpcCallee] ClientId callee, int boardId)
-    {
-        if (!_boards.TryGetValue(boardId, out var board))
-            return;
-        OnRequestMove?.Invoke(board);
-    }
-
+    // server sends the winner to each player
     public Action<ClientId>? OnGameOver;
-
     [Rpc(RpcCaller.Server)]
     public virtual void DeclareWinner([RpcCallee] ClientId callee, ClientId winner)
     {
