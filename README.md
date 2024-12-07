@@ -7,7 +7,7 @@ Checkers club implements a simple server where clients can connect and challenge
 
 ## Usage
 
-Uses .Net9, start a server with:
+Uses .Net8, start a server with:
 
 ```
 > dotnet run server
