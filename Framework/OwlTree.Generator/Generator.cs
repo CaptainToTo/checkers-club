@@ -58,6 +58,11 @@ namespace OwlTree.Generator
             context.RegisterSourceOutput(compilation, GenerateProxies);
         }
 
+        public void Initialize(GeneratorInitializationContext context)
+        {
+            throw new NotImplementedException();
+        }
+
         private void GenerateProxies(SourceProductionContext context, (Compilation Left, ImmutableArray<ClassDeclarationSyntax> Right) tuple)
         {
             var (compilation, list) = tuple;

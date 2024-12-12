@@ -63,7 +63,7 @@ namespace OwlTree
             if (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _lastRequest > _requestRate)
             {
                 var idBytes = _udpPacket.GetSpan(ConnectionRequestLength);
-                ConnectionRequestEncode(idBytes, ApplicationId);
+                ConnectionRequestEncode(idBytes, new ConnectionRequest(ApplicationId, false));
                 _udpClient.SendTo(_udpPacket.GetPacket().ToArray(), _udpEndPoint);
                 _udpPacket.Clear();
                 _lastRequest = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -99,14 +99,30 @@ namespace OwlTree
                     {
                         continue;
                     }
+                    
+                    ReadPacket.StartMessageRead();
+                    ReadPacket.TryGetNextMessage(out var message);
+                    var response = (ConnectionResponseCode)BitConverter.ToInt32(message);
 
-                    if (Logger.includes.connectionAttempts)
+                    if (response == ConnectionResponseCode.Accepted)
                     {
-                        Logger.Write("Connection request to " + Address.ToString() + " accepted at " + DateTime.UtcNow);
-                    }
+                        if (Logger.includes.connectionAttempts)
+                        {
+                            Logger.Write("Connection request to " + Address.ToString() + " accepted at " + DateTime.UtcNow);
+                        }
 
-                    _acceptedRequest = true;
-                    _tcpClient.Connect(_tcpEndPoint);
+                        _acceptedRequest = true;
+                        _tcpClient.Connect(_tcpEndPoint);
+                    }
+                    else
+                    {
+                        if (Logger.includes.connectionAttempts)
+                        {
+                            Logger.Write("Connection request to " + Address.ToString() + " rejected at " + DateTime.UtcNow + " with response code of: " + response.ToString());
+                        }
+
+                        _remainingRequests = 0;
+                    }
                 }
             }
         }
@@ -188,10 +204,9 @@ namespace OwlTree
                         ReadPacket.StartMessageRead();
                         while (ReadPacket.TryGetNextMessage(out var bytes))
                         {
-                            RpcId clientMessage = ClientMessageDecode(bytes, out var clientId, out var hash);
-                            if (RpcId.CLIENT_CONNECTED_MESSAGE_ID <= clientMessage && clientMessage <= RpcId.CLIENT_DISCONNECTED_MESSAGE_ID)
+                            if (TryClientMessageDecode(bytes, out var rpcId))
                             {
-                                HandleClientConnectionMessage(clientMessage, clientId, hash);
+                                HandleClientConnectionMessage(rpcId, bytes.Slice(RpcId.MaxLength()));
                             }
                             else if (TryDecode(ClientId.None, bytes, out var message))
                             {
@@ -249,27 +264,33 @@ namespace OwlTree
 
         // handle connections and disconnections immediately, 
         // they do not preserve the message execution order.
-        private void HandleClientConnectionMessage(RpcId messageType, ClientId id, UInt32 hash)
+        private void HandleClientConnectionMessage(RpcId messageType, ReadOnlySpan<byte> bytes)
         {
             switch (messageType.Id)
             {
                 case RpcId.CLIENT_CONNECTED_MESSAGE_ID:
+                    var id = new ClientId(bytes);
                     _clients.Add(id);
                     OnClientConnected?.Invoke(id);
                     break;
                 case RpcId.LOCAL_CLIENT_CONNECTED_MESSAGE_ID:
-                    _clients.Add(id);
-                    LocalId = id;
+                    var assignment = new ClientIdAssignment(bytes);
+                    _clients.Add(assignment.assignedId);
+                    LocalId = assignment.assignedId;
+                    Authority = assignment.authorityId;
                     _tcpPacket.header.sender = LocalId.Id;
-                    _tcpPacket.header.hash = hash;
                     _udpPacket.header.sender = LocalId.Id;
-                    _udpPacket.header.hash = hash;
                     IsReady = true;
                     OnReady?.Invoke(LocalId);
                     break;
                 case RpcId.CLIENT_DISCONNECTED_MESSAGE_ID:
+                    id = new ClientId(bytes);
                     _clients.Remove(id);
                     OnClientDisconnected?.Invoke(id);
+                    break;
+                case RpcId.HOST_MIGRATION:
+                    Authority = new ClientId(bytes);
+                    OnHostMigration?.Invoke(Authority);
                     break;
                 default: break;
             }
@@ -313,6 +334,7 @@ namespace OwlTree
                 _tcpClient.Send(bytes);
                 _tcpPacket.Reset();
             }
+            HasClientEvent = false;
 
             if (!_udpPacket.IsEmpty)
             {
@@ -353,11 +375,26 @@ namespace OwlTree
         }
 
         /// <summary>
-        /// INVALID ON CLIENTS. Clients cannot disconnect other clients.
+        /// If this client is the authority, tell the server to disconnect the given client.
         /// </summary>
         public override void Disconnect(ClientId id)
         {
-            throw new InvalidOperationException("Clients cannot disconnect other clients.");
+            if (LocalId != Authority)
+                throw new InvalidOperationException("Only the authority can disconnect other clients.");
+            var span = _tcpPacket.GetSpan(ClientMessageLength);
+            ClientDisconnectEncode(span, id);
+            HasClientEvent = true;
+        }
+
+        public override void MigrateHost(ClientId newHost)
+        {
+            if (LocalId != Authority)
+                throw new InvalidOperationException("Only the authority can migrate the host role.");
+            if (!_clients.Contains(newHost))
+                return;
+            var span = _tcpPacket.GetSpan(ClientMessageLength);
+            HostMigrationEncode(span, newHost);
+            HasClientEvent = true;
         }
     }
 }

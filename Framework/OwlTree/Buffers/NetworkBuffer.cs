@@ -225,6 +225,12 @@ namespace OwlTree
         public ClientId.Delegate OnReady;
 
         /// <summary>
+        /// Invoked when the session authority changes. Provides the client id
+        /// of the new authority.
+        /// </summary>
+        public ClientId.Delegate OnHostMigration;
+
+        /// <summary>
         /// Injected decoding scheme for messages.
         /// </summary>
         protected Decoder TryDecode;
@@ -249,7 +255,13 @@ namespace OwlTree
         /// <summary>
         /// The client id for the local instance. A server's local id will be <c>ClientId.None</c>
         /// </summary>
-        public ClientId LocalId { get; protected set; }
+        public ClientId LocalId { get; protected set; } = ClientId.None;
+
+        /// <summary>
+        /// The client id of the authority in this session. 
+        /// If this session is server authoritative, then this will be <c>ClientId.None</c>.
+        /// </summary>
+        public ClientId Authority { get; protected set; } = ClientId.None;
 
         // currently read messages
         protected ConcurrentQueue<Message> _incoming = new ConcurrentQueue<Message>();
@@ -389,6 +401,12 @@ namespace OwlTree
         /// Invokes <c>OnClientDisconnected</c>.
         /// </summary>
         public abstract void Disconnect(ClientId id);
+        
+        /// <summary>
+        /// Change the authority of the session to the given new host.
+        /// The previous host will be down-graded to a client if they are still connected.
+        /// </summary>
+        public abstract void MigrateHost(ClientId newHost);
 
         // * Connection and Disconnection Message Protocols
 
@@ -400,12 +418,12 @@ namespace OwlTree
         /// <summary>
         /// The number of bytes required to encode the local client connected event.
         /// </summary>
-        protected static int LocalClientConnectLength { get { return RpcId.MaxLength() + ClientId.MaxLength() + 4; } }
+        protected static int LocalClientConnectLength { get { return RpcId.MaxLength() + ClientIdAssignment.MaxLength(); } }
 
         /// <summary>
         /// The number of bytes required to encode a new connection request.
         /// </summary>
-        protected static int ConnectionRequestLength { get { return RpcId.MaxLength() + AppId.MaxLength(); } }
+        protected static int ConnectionRequestLength { get { return RpcId.MaxLength() + ConnectionRequest.MaxLength(); } }
 
         protected static void ClientConnectEncode(Span<byte> bytes, ClientId id)
         {
@@ -415,14 +433,12 @@ namespace OwlTree
             id.InsertBytes(bytes.Slice(ind, id.ByteLength()));
         }
 
-        protected static void LocalClientConnectEncode(Span<byte> bytes, ClientId id, UInt32 hash)
+        protected static void LocalClientConnectEncode(Span<byte> bytes, ClientIdAssignment assignment)
         {
             var rpcId = new RpcId(RpcId.LOCAL_CLIENT_CONNECTED_MESSAGE_ID);
             var ind = rpcId.ByteLength();
             rpcId.InsertBytes(bytes.Slice(0, ind));
-            id.InsertBytes(bytes.Slice(ind, id.ByteLength()));
-            ind += id.ByteLength();
-            BitConverter.TryWriteBytes(bytes.Slice(ind), hash);
+            assignment.InsertBytes(bytes.Slice(ind));
         }
 
         protected static void ClientDisconnectEncode(Span<byte> bytes, ClientId id)
@@ -433,52 +449,48 @@ namespace OwlTree
             id.InsertBytes(bytes.Slice(ind, id.ByteLength()));
         }
 
-        protected static void ConnectionRequestEncode(Span<byte> bytes, AppId id)
+        protected static void ConnectionRequestEncode(Span<byte> bytes, ConnectionRequest request)
         {
             var rpc = new RpcId(RpcId.CONNECTION_REQUEST);
             var ind = rpc.ByteLength();
             rpc.InsertBytes(bytes);
-            id.InsertBytes(bytes.Slice(ind));
+            request.InsertBytes(bytes.Slice(ind));
         }
 
-        protected static RpcId ServerMessageDecode(ReadOnlySpan<byte> bytes, out AppId id)
+        protected static void HostMigrationEncode(Span<byte> bytes, ClientId newHost)
+        {
+            var rpcId = new RpcId(RpcId.HOST_MIGRATION);
+            var ind = rpcId.ByteLength();
+            rpcId.InsertBytes(bytes.Slice(0, ind));
+            newHost.InsertBytes(bytes.Slice(ind, newHost.ByteLength()));
+        }
+
+        protected static RpcId ServerMessageDecode(ReadOnlySpan<byte> bytes, out ConnectionRequest request)
         {
             RpcId result = RpcId.None;
             result.FromBytes(bytes);
-            id = new AppId();
+            request = new ConnectionRequest();
             switch (result.Id)
             {
                 case RpcId.CONNECTION_REQUEST:
-                    id.FromBytes(bytes.Slice(result.ByteLength()));
+                    request.FromBytes(bytes.Slice(result.ByteLength()));
                     break;
             }
             return result;
         }
 
-        protected static RpcId ClientMessageDecode(ReadOnlySpan<byte> message, out ClientId id, out UInt32 hash)
+        protected static bool TryClientMessageDecode(ReadOnlySpan<byte> bytes, out RpcId rpcId)
         {
-            RpcId result = RpcId.None;
-            hash = 0;
-            UInt32 rpcId = BitConverter.ToUInt32(message);
-            switch(rpcId)
+            rpcId = new RpcId(bytes);
+            switch(rpcId.Id)
             {
                 case RpcId.CLIENT_CONNECTED_MESSAGE_ID:
-                    result = new RpcId(RpcId.CLIENT_CONNECTED_MESSAGE_ID);
-                    break;
                 case RpcId.LOCAL_CLIENT_CONNECTED_MESSAGE_ID:
-                    result = new RpcId(RpcId.LOCAL_CLIENT_CONNECTED_MESSAGE_ID);
-                    hash = BitConverter.ToUInt32(message.Slice(result.ByteLength() + ClientId.MaxLength()));
-                    break;
                 case RpcId.CLIENT_DISCONNECTED_MESSAGE_ID:
-                    result = new RpcId(RpcId.CLIENT_DISCONNECTED_MESSAGE_ID);
-                    break;
-                default:
-                    id = ClientId.None;
-                    hash = 0;
-                    return RpcId.None;
+                case RpcId.HOST_MIGRATION:
+                    return true;
             }
-            id = new ClientId(message.Slice(result.ByteLength()));
-            return result;
+            return false;
         }
     }
 }

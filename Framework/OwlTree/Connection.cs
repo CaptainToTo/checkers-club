@@ -12,12 +12,26 @@ namespace OwlTree
     public class Connection
     {
         /// <summary>
-        /// Whether the Connection represents a server or client instance.
+        /// Determines the responsibilities and capabilities a Connection will have.
         /// </summary>
         public enum Role
         {
+            /// <summary>
+            /// The Connection is a Server, it will manage client connections, and act as the state authority.
+            /// </summary>
             Server,
-            Client
+            /// <summary>
+            /// The Connection is a Client, it will attempt to connect to a server, and will not have state authority.
+            /// </summary>
+            Client,
+            /// <summary>
+            /// The Connection is a Host Client, it will attempt to connect to a server, and will act as the state authority.
+            /// </summary>
+            Host,
+            /// <summary>
+            /// The Connection is Relay Server, it will manage client connections, and pass RPCs between host and clients.
+            /// </summary>
+            Relay
         }
 
         /// <summary>
@@ -47,7 +61,19 @@ namespace OwlTree
             /// The maximum number of clients the server will allow to be connected at once.
             /// <b>Default = 4</b>
             /// </summary>
-            public byte maxClients = 4;
+            public int maxClients = 4;
+            /// <summary>
+            /// The IP address of the host client of this session. Used by relay server 
+            /// to pre-verify the host. <b>Default = null (first client connected will be given host authority)</b>
+            /// </summary>
+            public string hostAddr = null;
+            /// <summary>
+            /// Whether or not a relayed peer-to-peer session can migrate hosts. 
+            /// A session that is migratable will re-assign the host if the current host disconnects.
+            /// A session that is not migratable will shutdown if the current host disconnects.
+            /// <b>Default = false</b>
+            /// </summary>
+            public bool migratable = false;
 
             /// <summary>
             /// The number of milliseconds clients will wait before sending another connection request to the server.
@@ -59,6 +85,12 @@ namespace OwlTree
             /// The number of connection attempts clients will make before ending the connection in failure. <b>Default = 10</b>
             /// </summary>
             public int connectionRequestLimit = 10;
+
+            /// <summary>
+            /// the number of milliseconds servers will wait for clients to make the TCP handshake before timing out
+            /// their connection request. <b>Default = 20000 (20 sec)</b>
+            /// </summary>
+            public int connectionRequestTimeout = 20000;
 
             /// <summary>
             /// The byte length of read and write buffers.
@@ -158,11 +190,13 @@ namespace OwlTree
         /// </summary>
         public Connection(Args args)
         {
+            NetRole = args.role;
+
             _logger = new Logger(args.printer, args.verbosity);
 
-            Protocols = RpcProtocols.GetProjectImplementation();
+            Protocols = IsRelay ? null : RpcProtocols.GetProjectImplementation();
 
-            if (_logger.includes.allRpcProtocols)
+            if (!IsRelay && _logger.includes.allRpcProtocols)
             {
                 _logger.Write(Protocols.GetAllProtocolSummaries());
             }
@@ -182,39 +216,48 @@ namespace OwlTree
                 logger = _logger
             };
 
-            if (args.role == Role.Client)
+            switch (args.role)
             {
-                _buffer = new ClientBuffer(bufferArgs, args.connectionRequestRate, args.connectionRequestLimit);
-                IsReady = false;
+                case Role.Server:
+                    _buffer = new ServerBuffer(bufferArgs, args.maxClients, args.connectionRequestTimeout);
+                    IsReady = true;
+                    break;
+                case Role.Client:
+                case Role.Host:
+                    _buffer = new ClientBuffer(bufferArgs, args.connectionRequestRate, args.connectionRequestLimit);
+                    IsReady = false;
+                    break;
+                case Role.Relay:
+                    _buffer = new RelayBuffer(bufferArgs, args.maxClients, args.connectionRequestTimeout, args.hostAddr, args.migratable);
+                    IsReady = true;
+                    break;
             }
-            else
-            {
-                _buffer = new ServerBuffer(bufferArgs, args.maxClients);
-                IsReady = true;
-            }
-            NetRole = args.role;
             _buffer.OnClientConnected = (id) => _clientEvents.Enqueue((ConnectionEventType.OnConnect, id));
             _buffer.OnClientDisconnected = (id) => _clientEvents.Enqueue((ConnectionEventType.OnDisconnect, id));
             _buffer.OnReady = (id) => _clientEvents.Enqueue((ConnectionEventType.OnReady, id));
+            _buffer.OnHostMigration = (id) => _clientEvents.Enqueue((ConnectionEventType.OnHostMigration, id));
             IsActive = true;
 
-            var factory = ProxyFactory.GetProjectImplementation();
+            if (!IsRelay)
+            {
+                var factory = ProxyFactory.GetProjectImplementation();
 
-            if (_logger.includes.allTypeIds)
-                _logger.Write(factory.GetAllIdAssignments());
+                if (_logger.includes.allTypeIds)
+                    _logger.Write(factory.GetAllIdAssignments());
 
-            _spawner = new NetworkSpawner(this, factory);
+                _spawner = new NetworkSpawner(this, factory);
 
-            _spawner.OnObjectSpawn = (obj) => {
-                if (_logger.includes.spawnEvents)
-                    _logger.Write("Spawned new network object: " + obj.Id.ToString() + ", of type: " + obj.GetType().ToString());
-                OnObjectSpawn?.Invoke(obj);
-            };
-            _spawner.OnObjectDespawn = (obj) => {
-                if (_logger.includes.spawnEvents)
-                    _logger.Write("Despawned network object: " + obj.Id.ToString() + ", of type: " + obj.GetType().ToString());
-                OnObjectDespawn?.Invoke(obj);
-            };
+                _spawner.OnObjectSpawn = (obj) => {
+                    if (_logger.includes.spawnEvents)
+                        _logger.Write("Spawned new network object: " + obj.Id.ToString() + ", of type: " + obj.GetType().ToString());
+                    OnObjectSpawn?.Invoke(obj);
+                };
+                _spawner.OnObjectDespawn = (obj) => {
+                    if (_logger.includes.spawnEvents)
+                        _logger.Write("Despawned network object: " + obj.Id.ToString() + ", of type: " + obj.GetType().ToString());
+                    OnObjectDespawn?.Invoke(obj);
+                };
+            }
 
             if (args.useCompression)
             {
@@ -246,7 +289,7 @@ namespace OwlTree
                 _bufferThread.Start();
             }
         }
-        
+
         /// <summary>
         /// Access metadata about RPC encodings and generated protocols.
         /// </summary>
@@ -270,6 +313,23 @@ namespace OwlTree
             {
                 long start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 _buffer.Read();
+
+                if (!IsClient)
+                {
+                    while (_clientRequests.TryDequeue(out var request))
+                    {
+                        switch (request.t)
+                        {
+                            case ConnectionEventType.OnDisconnect:
+                                _buffer.Disconnect(request.id);
+                                break;
+                            case ConnectionEventType.OnHostMigration:
+                                _buffer.MigrateHost(request.id);
+                                break;
+                        }
+                    }
+                }
+
                 if (_buffer.HasOutgoing)
                     _buffer.Send();
                 long diff = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start;
@@ -293,18 +353,29 @@ namespace OwlTree
         /// </summary>
         public bool IsClient { get => NetRole == Role.Client; }
 
+        /// <summary>
+        /// Returns true if this connection is configured to be a host client.
+        /// </summary>
+        public bool IsHost { get => NetRole == Role.Host; }
+
+        /// <summary>
+        /// Returns true if this connection is configured to be a relay server.
+        /// </summary>
+        public bool IsRelay { get => NetRole == Role.Relay; }
+
         private NetworkBuffer _buffer;
 
         private enum ConnectionEventType
         {
             OnConnect,
             OnDisconnect,
-            OnReady
+            OnReady,
+            OnHostMigration
         }
 
         private ConcurrentQueue<(ConnectionEventType t, ClientId id)> _clientEvents = new ConcurrentQueue<(ConnectionEventType, ClientId)>();
 
-        private ConcurrentQueue<ClientId> _disconnectRequests = new ConcurrentQueue<ClientId>();
+        private ConcurrentQueue<(ConnectionEventType t, ClientId id)> _clientRequests = new ConcurrentQueue<(ConnectionEventType t, ClientId id)>();
 
         private List<ClientId> _clients = new List<ClientId>();
 
@@ -335,6 +406,16 @@ namespace OwlTree
         public event ClientId.Delegate OnReady;
 
         /// <summary>
+        /// Invoke when this connection is closed. Provides the local client id.
+        /// </summary>
+        public event ClientId.Delegate OnLocalDisconnect;
+
+        /// <summary>
+        /// Invoked when the authority is migrated. Provides the new authority's client id.
+        /// </summary>
+        public event ClientId.Delegate OnHostMigration;
+
+        /// <summary>
         /// Whether this connection is active. Will be false for clients if they have been disconnected from the server.
         /// </summary>
         public bool IsActive { get; private set; } = false;
@@ -348,6 +429,17 @@ namespace OwlTree
         /// The client id assigned to this local instance. Servers will have a LocalId of <c>ClientId.None</c>
         /// </summary>
         public ClientId LocalId { get { return _buffer.LocalId; } }
+
+        /// <summary>
+        /// the client id of the instance assigned as the authority of the session. 
+        /// Servers will have an id of <c>ClientId.None</c>.
+        /// </summary>
+        public ClientId Authority { get; private set; } = ClientId.None;
+
+        /// <summary>
+        /// Returns true if the local connection is the authority of this session.
+        /// </summary>
+        public bool IsAuthority { get { return !IsRelay && _buffer.LocalId == _buffer.Authority; } }
 
         /// <summary>
         /// Receive any RPCs that have been sent to this connection. Execute them with <c>ExecuteQueue()</c>.
@@ -406,31 +498,35 @@ namespace OwlTree
                                 _logger.Write("Local client disconnected.");
                             IsActive = false;
                             IsReady = false;
+                            OnLocalDisconnect?.Invoke(LocalId);
                             _spawner.DespawnAll();
                         }
                         else
                         {
                             if (_logger.includes.clientEvents)
                                 _logger.Write("Remote client disconnected: " + result.id.ToString());
+                            _clients.Remove(result.id);
+                            OnClientDisconnected?.Invoke(result.id);
                         }
-                        _clients.Remove(result.id);
-                        OnClientDisconnected?.Invoke(result.id);
                         break;
                     case ConnectionEventType.OnReady:
                         IsReady = true;
+                        Authority = _buffer.Authority;
                         if (_logger.includes.clientEvents)
                             _logger.Write("Connection is ready. Local client id is: " + result.id.ToString());
                         _clients.Add(result.id);
                         OnReady?.Invoke(result.id);
                         break;
-                }
-            }
-
-            if (NetRole == Role.Server)
-            {
-                while (_disconnectRequests.TryDequeue(out var clientId))
-                {
-                    _buffer.Disconnect(clientId);
+                    case ConnectionEventType.OnHostMigration:
+                        Authority = result.id;
+                        if (NetRole == Role.Host)
+                            NetRole = Role.Client;
+                        if (result.id == LocalId)
+                            NetRole = Role.Host;
+                        if (_logger.includes.clientEvents)
+                            _logger.Write("Host migrated, new authority is: " + result.id.ToString());
+                        OnHostMigration?.Invoke(result.id);
+                        break;
                 }
             }
 
@@ -453,10 +549,10 @@ namespace OwlTree
             }
         }
 
-        private bool TryDecodeRpc(ClientId caller, ReadOnlySpan<byte> bytes, out NetworkBuffer.Message message)
+        private bool TryDecodeRpc(ClientId source, ReadOnlySpan<byte> bytes, out NetworkBuffer.Message message)
         {
             message = NetworkBuffer.Message.Empty;
-            if (NetworkSpawner.TryDecode(bytes, out var rpcId, out var args) && NetRole == Role.Client)
+            if (NetRole != Role.Server && NetworkSpawner.TryDecode(bytes, out var rpcId, out var args))
             {
                 message = new NetworkBuffer.Message(LocalId, rpcId, args);
                 if (_logger.includes.rpcReceiveEncodings)
@@ -468,14 +564,14 @@ namespace OwlTree
                 }
                 return true;
             }
-            else if (Protocols.TryDecodeRpc(caller, bytes, out rpcId, out var target, out args))
+            else if (Protocols.TryDecodeRpc(bytes, out rpcId, out var caller, out var callee, out var target, out args))
             {
-                message = new NetworkBuffer.Message(caller, LocalId, rpcId, target, Protocol.Tcp, args);
+                message = new NetworkBuffer.Message(caller, callee, rpcId, target, Protocol.Tcp, args);
                 if (_logger.includes.rpcReceives)
                 {
                     var output = $"RECEIVING:\n{Protocols.GetRpcName(rpcId.Id)} {rpcId}, Called on Object {target}";
                     if (_logger.includes.rpcReceiveEncodings)
-                        output += ":\n" + Protocols.GetEncodingSummary(caller, rpcId, target, args);
+                        output += ":\n" + Protocols.GetEncodingSummary(rpcId, caller, callee, target, args);
                     _logger.Write(output);
                 }
                 return true;
@@ -485,10 +581,44 @@ namespace OwlTree
 
         private void EncodeRpc(NetworkBuffer.Message message, Packet buffer)
         {
-            var span = buffer.GetSpan(message.bytes.Length);
-            for (int i = 0; i < span.Length; i++)
+            // add locally called rpc to packet
+            if (message.bytes != null)
             {
-                span[i] = message.bytes[i];
+                var span = buffer.GetSpan(message.bytes.Length);
+                for (int i = 0; i < span.Length; i++)
+                {
+                    span[i] = message.bytes[i];
+                }
+            }
+            // relaying client to client rpc
+            else
+            {
+                if (message.rpcId == RpcId.NETWORK_OBJECT_SPAWN)
+                {
+                    var bytes = buffer.GetSpan(NetworkSpawner.SpawnByteLength);
+                    _spawner.SpawnEncode(bytes, (Type)message.args[0], (NetworkId)message.args[1]);
+                    if (_logger.includes.rpcCallEncodings)
+                        _logger.Write("RELAYING:\n" + _spawner.SpawnEncodingSummary((Type)message.args[0], (NetworkId)message.args[1]));
+                }
+                else if (message.rpcId == RpcId.NETWORK_OBJECT_DESPAWN)
+                {
+                    var bytes = buffer.GetSpan(NetworkSpawner.DespawnByteLength);
+                    _spawner.DespawnEncode(bytes, (NetworkId)message.args[0]);
+                    if (_logger.includes.rpcCallEncodings)
+                        _logger.Write("RELAYING:\n" + _spawner.DespawnEncodingSummary((NetworkId)message.args[0]));
+                }
+                else
+                {
+                    var bytes = buffer.GetSpan(Protocols.GetRpcByteLength(message.rpcId, message.args));
+                    Protocols.EncodeRpc(bytes, message.rpcId, message.caller, message.callee, message.target, message.args);
+                    if (_logger.includes.rpcCalls)
+                    {
+                        var output = $"RELAYING:\n{Protocols.GetRpcName(message.rpcId.Id)} {message.rpcId}, Called on Object {message.target}";
+                        if (_logger.includes.rpcCallEncodings)
+                            output += ":\n" + Protocols.GetEncodingSummary(message.rpcId, message.caller, message.callee, message.target, message.args);
+                        _logger.Write(output);
+                    }
+                }
             }
         }
 
@@ -512,13 +642,13 @@ namespace OwlTree
             }
             else
             {
-                message.bytes = new byte[RpcEncoding.GetExpectedRpcLength(message.args)];
-                RpcEncoding.EncodeRpc(message.bytes, message.rpcId, message.target, message.args);
+                message.bytes = new byte[Protocols.GetRpcByteLength(rpcId, message.args)];
+                Protocols.EncodeRpc(message.bytes, rpcId, LocalId, callee, target, args);
                 if (_logger.includes.rpcCalls)
                 {
                     var output = $"SENDING:\n{Protocols.GetRpcName(rpcId.Id)} {rpcId}, Called on Object {target}";
                     if (_logger.includes.rpcCallEncodings)
-                        output += ":\n" + Protocols.GetEncodingSummary(LocalId, rpcId, target, args);
+                        output += ":\n" + Protocols.GetEncodingSummary(rpcId, LocalId, callee, target, args);
                     _logger.Write(output);
                 }
             }
@@ -560,16 +690,26 @@ namespace OwlTree
         }
 
         /// <summary>
-        /// ONLY ALLOWED ON SERVER. Disconnect a specific client from the server.
+        /// Disconnect a specific client from the server.
         /// </summary>
         public void Disconnect(ClientId id)
         {
-            if (NetRole == Role.Client)
-                throw new InvalidOperationException("Clients cannot disconnect other clients");
+            if (IsClient)
+                throw new InvalidOperationException("Only the authority can disconnect other clients.");
             if (Threaded)
-                _disconnectRequests.Enqueue(id);
+                _clientRequests.Enqueue((ConnectionEventType.OnDisconnect, id));
             else
                 _buffer.Disconnect(id);
+        }
+
+        public void MigrateHost(ClientId id)
+        {
+            if (IsClient)
+                throw new InvalidOperationException("Only the current host or the relay server can initiate a host migration.");
+            if (Threaded)
+                _clientRequests.Enqueue((ConnectionEventType.OnHostMigration, id));
+            else
+                _buffer.MigrateHost(id);
         }
 
         private NetworkSpawner _spawner;
@@ -587,10 +727,17 @@ namespace OwlTree
         public event NetworkObject.Delegate OnObjectDespawn;
 
         /// <summary>
+        /// Iterable of all currently spawned network objects
+        /// </summary>
+        public IEnumerable<NetworkObject> NetworkObjects => IsRelay ? null : _spawner.NetworkObjects;
+
+        /// <summary>
         /// Try to get an object with the given id. Returns true if one was found, false otherwise.
         /// </summary>
         public bool TryGetObject(NetworkId id, out NetworkObject obj)
         {
+            if (IsRelay)
+                throw new InvalidOperationException("Relay servers do not manage any state beyond client connections, no network objects exist on this connection.");
             return _spawner.TryGetObject(id, out obj);
         }
         
@@ -599,6 +746,8 @@ namespace OwlTree
         /// </summary>
         public NetworkObject GetNetworkObject(NetworkId id)
         {
+            if (IsRelay)
+                throw new InvalidOperationException("Relay servers do not manage any state beyond client connections, no network objects exist on this connection.");
             return _spawner.GetNetworkObject(id);
         }
 
@@ -607,8 +756,10 @@ namespace OwlTree
         /// </summary>
         public T Spawn<T>() where T : NetworkObject, new()
         {
-            if (NetRole == Role.Client)
-                throw new InvalidOperationException("Clients cannot spawn or destroy network objects");
+            if (IsClient)
+                throw new InvalidOperationException("Clients cannot spawn or destroy network objects.");
+            else if (IsRelay)
+                throw new InvalidOperationException("Relay servers cannot spawn or destroy network objects.");
             var obj = _spawner.Spawn<T>();
             return obj;
         }
@@ -618,8 +769,10 @@ namespace OwlTree
         /// </summary>
         public object Spawn(Type t)
         {
-            if (NetRole == Role.Client)
+            if (IsClient)
                 throw new InvalidOperationException("Clients cannot spawn or despawn network objects");
+            else if (IsRelay)
+                throw new InvalidOperationException("Relay servers cannot spawn or destroy network objects.");
             return _spawner.Spawn(t);
         }
 
@@ -628,8 +781,10 @@ namespace OwlTree
         /// </summary>
         public void Despawn(NetworkObject target)
         {
-            if (NetRole == Role.Client)
+            if (IsClient)
                 throw new InvalidOperationException("Clients cannot spawn or despawn network objects");
+            else if (IsRelay)
+                throw new InvalidOperationException("Relay servers cannot spawn or destroy network objects.");
             _spawner.Despawn(target);
         }
     }
