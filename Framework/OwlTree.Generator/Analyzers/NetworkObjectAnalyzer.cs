@@ -20,8 +20,8 @@ namespace OwlTree.Generator
                 Helpers.HasAttribute(c.AttributeLists, Helpers.AttrTk_AssignTypeId) ? "0" : "1"
                 ) + c.Identifier.ValueText);
             
-            byte curId = Helpers.FIRST_NETWORK_TYPE_ID;
-            byte _curId = Helpers.FIRST_NETWORK_TYPE_ID;
+            byte curId = Helpers.FirstNetworkTypeId;
+            byte _curId = Helpers.FirstNetworkTypeId;
 
             foreach (ClassDeclarationSyntax c in ordered)
             {
@@ -76,8 +76,8 @@ namespace OwlTree.Generator
                     Helpers.HasAttribute(m.AttributeLists, Helpers.AttrTk_AssignRpcId) ? "0" : "1"
                     ) + m.Identifier.ValueText);
 
-            uint curId = Helpers.FIRST_RPC_ID;
-            uint _curId = Helpers.FIRST_RPC_ID;
+            uint curId = Helpers.FirstRpcId;
+            uint nextId = Helpers.FirstRpcId;
 
             foreach (MethodDeclarationSyntax m in methods)
             {
@@ -85,8 +85,8 @@ namespace OwlTree.Generator
                 if (GeneratorState.HasRpc(fullName))
                 {
                     var id = GeneratorState.GetRpcData(fullName).id;
-                    if (_curId <= id)
-                        _curId = id + 1;
+                    if (nextId <= id)
+                        nextId = id + 1;
                     continue;
                 }
 
@@ -108,7 +108,7 @@ namespace OwlTree.Generator
                     continue;
                 }
 
-                if (!Helpers.IsEncodable(m.ParameterList, out var err, out var pErr))
+                if (!Helpers.IsEncodable(m.ParameterList, out var err, out var pErr, out var calleeId, out var callerId))
                 {
                     if (err == 1)
                         Diagnostics.NonEncodableRpcParam(context, m, pErr);
@@ -119,7 +119,7 @@ namespace OwlTree.Generator
                     continue;
                 }
 
-                curId = _curId;
+                curId = nextId;
                 var attr = Helpers.GetAttribute(m.AttributeLists, Helpers.AttrTk_AssignRpcId);
                 if (attr != null)
                 {
@@ -146,11 +146,17 @@ namespace OwlTree.Generator
                     out var caller, out var invokeOnCaller, out var useTcp
                 );
 
+                if (caller == GeneratorState.RpcPerms.ClientsToAuthority && calleeId != null)
+                {
+                    Diagnostics.UnnecessaryCalleeIdParam(context, m, calleeId);
+                    continue;
+                }
+
                 var rpcData = new GeneratorState.RpcData()
                 {
                     id = curId,
                     name = m.Identifier.ValueText,
-                    caller = caller,
+                    perms = caller,
                     invokeOnCaller = invokeOnCaller,
                     useTcp = useTcp,
                     parentClass = Helpers.GetParentClassName(m),
@@ -159,8 +165,8 @@ namespace OwlTree.Generator
 
                 GeneratorState.AddRpcData(fullName, rpcData);
 
-                if (_curId <= curId)
-                    _curId = curId + 1;
+                if (nextId <= curId)
+                    nextId = curId + 1;
             }
         }
 
@@ -174,8 +180,8 @@ namespace OwlTree.Generator
                 var param = paramList[i];
                 data[i].name = param.Identifier.ValueText;
                 data[i].type = param.Type.ToString();
-                data[i].isRpcCallee = Helpers.HasAttribute(param.AttributeLists, Helpers.AttrTk_RpcCallee);
-                data[i].isRpcCaller = Helpers.HasAttribute(param.AttributeLists, Helpers.AttrTk_RpcCaller);
+                data[i].isRpcCallee = Helpers.HasAttribute(param.AttributeLists, Helpers.AttrTk_RpcCalleeId);
+                data[i].isRpcCaller = Helpers.HasAttribute(param.AttributeLists, Helpers.AttrTk_RpcCallerId);
             }
 
             return data;

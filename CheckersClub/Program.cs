@@ -22,11 +22,11 @@ public class Program
             var server = new Connection(new Connection.Args
             {
                 appId = AppId,
-                role = Connection.Role.Server,
+                role = NetRole.Server,
                 serverAddr = addr,
                 maxClients = 16,    // 16 clients per server
                 threaded = false,   // server is single threaded since it doesn't need to run update logic
-                printer = ServerLog,
+                logger = ServerLog,
                 verbosity = Logger.Includes().All()
             });
 
@@ -45,10 +45,10 @@ public class Program
             var client = new Connection(new Connection.Args
             {
                 appId = AppId,
-                role = Connection.Role.Client,
+                role = NetRole.Client,
                 serverAddr = addr,
                 threadUpdateDelta = 500,    // clients are multithreaded, they will recv&send every half sec
-                printer = ClientLog,
+                logger = ClientLog,
                 verbosity = Logger.Includes().All()
             });
             client.OnReady += (_) => Console.WriteLine("connected!");
@@ -78,7 +78,7 @@ public class Program
     {
         while (connection.IsActive)
         {
-            connection.Read();
+            connection.Recv();
             connection.ExecuteQueue();
             connection.Send();
             Thread.Sleep(100);

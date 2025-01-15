@@ -11,7 +11,7 @@ public class PlayerManager : NetworkObject
     {
         Instance = this;
         Connection.OnClientDisconnected += RemovePlayer;
-        if (Connection.NetRole == Connection.Role.Server)
+        if (Connection.IsServer)
             Connection.OnClientConnected += (id) => SendPlayers(id, _players);
         Console.WriteLine("player manager init...");
     }
@@ -73,15 +73,15 @@ public class PlayerManager : NetworkObject
     }
 
     // send all usernames to a specific client
-    [Rpc(RpcCaller.Server)]
-    public virtual void SendPlayers([RpcCallee] ClientId callee, NetworkDict<Capacity16, ClientId, NetworkString<Capacity32>> players)
+    [Rpc(RpcPerms.AuthorityToClients)]
+    public virtual void SendPlayers([CalleeId] ClientId callee, NetworkDict<Capacity16, ClientId, NetworkString<Capacity32>> players)
     {
         _players = players;
     }
 
     // submit username to server
-    [Rpc(RpcCaller.Client, InvokeOnCaller = false)]
-    public virtual void SendUsername(NetworkString<Capacity32> name, [RpcCaller] ClientId caller = default)
+    [Rpc(RpcPerms.ClientsToAuthority, InvokeOnCaller = false)]
+    public virtual void SendUsername(NetworkString<Capacity32> name, [CallerId] ClientId caller = default)
     {
         Console.WriteLine("attempted player name assignment: " + caller + " " + name);
         if (_players.ContainsValue(name))
@@ -93,16 +93,16 @@ public class PlayerManager : NetworkObject
     public Action? OnNameDenied;
     public Action<string>? OnNameAssigned;
 
-    [Rpc(RpcCaller.Server)]
-    public virtual void DenyUsername([RpcCallee] ClientId callee)
+    [Rpc(RpcPerms.AuthorityToClients)]
+    public virtual void DenyUsername([CalleeId] ClientId callee)
     {
         OnNameDenied?.Invoke();
     }
 
-    [Rpc(RpcCaller.Server, InvokeOnCaller = true)]
+    [Rpc(RpcPerms.AuthorityToClients, InvokeOnCaller = true)]
     public virtual void BroadcastUsername(ClientId player, NetworkString<Capacity32> name)
     {
-        if (Connection.NetRole == Connection.Role.Server)
+        if (Connection.IsServer)
             Console.WriteLine("assigned player name: " + player + " " + name);
         _players[player] = name;
         if (player == Connection.LocalId)

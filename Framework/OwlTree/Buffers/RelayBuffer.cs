@@ -1,7 +1,7 @@
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -9,32 +9,33 @@ using System.Text;
 namespace OwlTree
 {
     /// <summary>
-    /// Manages sending and receiving messages for a server instance.
+    /// Manages passing packets between clients in a peer-to-peer session.
     /// </summary>
-    public class ServerBuffer : NetworkBuffer
+    public class RelayBuffer : NetworkBuffer
     {
-        /// <summary>
-        /// Manages sending and receiving messages for a server instance.
-        /// </summary>
-        /// <param name="args">NetworkBuffer parameters.</param>
-        /// <param name="maxClients">The max number of clients that can be connected at once.</param>
-        public ServerBuffer(Args args, int maxClients, long requestTimeout, IPAddress[] whitelist) : base (args)
+        public RelayBuffer(Args args, int maxClients, long requestTimeout, string hostAddr, bool migratable, bool shutdownWhenEmpty, IPAddress[] whitelist) : base(args)
         {
             IPEndPoint tpcEndPoint = new IPEndPoint(IPAddress.Any, ServerTcpPort);
-            _tcpServer = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            _tcpServer.Bind(tpcEndPoint);
-            _tcpServer.Listen(maxClients);
-            ServerTcpPort = ((IPEndPoint)_tcpServer.LocalEndPoint).Port;
-            _readList.Add(_tcpServer);
+            _tcpRelay = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            _tcpRelay.Bind(tpcEndPoint);
+            _tcpRelay.Listen(maxClients);
+            ServerTcpPort = ((IPEndPoint)_tcpRelay.LocalEndPoint).Port;
+            _readList.Add(_tcpRelay);
 
             IPEndPoint udpEndPoint = new IPEndPoint(IPAddress.Any, ServerUdpPort);
-            _udpServer = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            _udpServer.Bind(udpEndPoint);
-            ServerUdpPort = ((IPEndPoint)_udpServer.LocalEndPoint).Port;
-            _readList.Add(_udpServer);
+            _udpRelay = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            _udpRelay.Bind(udpEndPoint);
+            ServerUdpPort = ((IPEndPoint)_udpRelay.LocalEndPoint).Port;
+            _readList.Add(_udpRelay);
+
+            _whitelist = whitelist;
+
+            ShutdownWhenEmpty = shutdownWhenEmpty;
+            if (hostAddr != null)
+                _hostAddr = IPAddress.Parse(hostAddr);
+            Migratable = ShutdownWhenEmpty ? migratable : true;
 
             _clientData = new ClientDataList(BufferSize, DateTimeOffset.UtcNow.Millisecond);
-            _whitelist = whitelist;
 
             MaxClients = maxClients == -1 ? int.MaxValue : maxClients;
             _requests = new(MaxClients, requestTimeout);
@@ -49,11 +50,14 @@ namespace OwlTree
         public override int LocalUdpPort() => ServerUdpPort;
 
         // server state
-        private Socket _tcpServer;
-        private Socket _udpServer;
-        private List<Socket> _readList = new List<Socket>();
+        private Socket _tcpRelay;
+        private Socket _udpRelay;
+        private List<Socket> _readList = new();
         private ClientDataList _clientData;
         private ConnectionRequestList _requests;
+
+        private IPAddress _hostAddr = null;
+
         private IPAddress[] _whitelist = null;
 
         private bool HasWhitelist => _whitelist != null && _whitelist.Length > 0;
@@ -67,13 +71,24 @@ namespace OwlTree
         }
 
         /// <summary>
-        /// Reads any data currently on sockets. Putting new messages in the queue, and connecting new clients.
+        /// Whether or not the host role can be migrated or not. 
+        /// If not, then the relay server will shutdown when the host disconnects.
         /// </summary>
+        public bool Migratable { get; private set; }
+
+        /// <summary>
+        /// Whether or not to shutdown the server if it is empty.
+        /// </summary>
+        public bool ShutdownWhenEmpty { get; private set; }
+
         public override void Recv()
         {
+            if (!IsActive)
+                return;
+            
             _readList.Clear();
-            _readList.Add(_tcpServer);
-            _readList.Add(_udpServer);
+            _readList.Add(_tcpRelay);
+            _readList.Add(_udpRelay);
             foreach (var data in _clientData)
                 _readList.Add(data.tcpSocket);
             
@@ -84,7 +99,7 @@ namespace OwlTree
             foreach (var socket in _readList)
             {
                 // new client connects
-                if (socket == _tcpServer)
+                if (socket == _tcpRelay)
                 {
                     var tcpClient = socket.Accept();
 
@@ -106,6 +121,17 @@ namespace OwlTree
                     if (Logger.includes.connectionAttempts)
                     {
                         Logger.Write($"TCP handshake made with {((IPEndPoint)tcpClient.RemoteEndPoint).Address} (tcp port: {((IPEndPoint)tcpClient.RemoteEndPoint).Port}) (udp port: {udpPort}). Assigned: {clientData.id}");
+                    }
+
+                    if (Authority == ClientId.None && (_hostAddr == null || _hostAddr.Equals(((IPEndPoint)tcpClient.RemoteEndPoint).Address)))
+                    {
+                        _hostAddr = ((IPEndPoint)tcpClient.RemoteEndPoint).Address;
+                        Authority = clientData.id;
+
+                        if (Logger.includes.connectionAttempts)
+                        {
+                            Logger.Write($"Client {clientData.id} assigned as host.");
+                        }
                     }
 
                     OnClientConnected?.Invoke(clientData.id);
@@ -134,9 +160,9 @@ namespace OwlTree
                     tcpClient.Send(bytes);
                     clientData.tcpPacket.Reset();
                 }
-                else if (socket == _udpServer) // receive client udp messages
+                else if (socket == _udpRelay) // receive client udp messages
                 {
-                    while (_udpServer.Available > 0)
+                    while (_udpRelay.Available > 0)
                     {
                         Array.Clear(ReadBuffer, 0, ReadBuffer.Length);
                         ReadPacket.Clear();
@@ -175,6 +201,13 @@ namespace OwlTree
                                 Logger.Write("Connection attempt from " + ((IPEndPoint)source).Address.ToString() + " (udp port: " + ((IPEndPoint)source).Port + ") received: \n" + PacketToString(ReadPacket));
                             }
 
+                            // if the pre-assigned host hasn't connected yet, no-one else can join 
+                            if (_hostAddr != null && Authority == ClientId.None && !_hostAddr.Equals(((IPEndPoint)source).Address))
+                            {
+                                Logger.Write("Connection attempt from " + ((IPEndPoint)source).Address.ToString() + " (udp port: " + ((IPEndPoint)source).Port + ") rejected.");
+                                continue;
+                            }
+
                             ReadPacket.StartMessageRead();
                             if (ReadPacket.TryGetNextMessage(out var bytes))
                             {
@@ -185,6 +218,7 @@ namespace OwlTree
                                     _clientData.Count < MaxClients && _requests.Count < MaxClients
                                 )
                                 {
+
                                     // connection request verified, send client confirmation
                                     _requests.Add((IPEndPoint)source);
                                     accepted = true;
@@ -199,7 +233,7 @@ namespace OwlTree
                                 var response = ReadPacket.GetSpan(4);
                                 BitConverter.TryWriteBytes(response, (int)(accepted ? ConnectionResponseCode.Accepted : ConnectionResponseCode.Rejected));
                                 var responsePacket = ReadPacket.GetPacket();
-                                _udpServer.SendTo(responsePacket.ToArray(), source);
+                                _udpRelay.SendTo(responsePacket.ToArray(), source);
                             }
 
                             if (Logger.includes.connectionAttempts)
@@ -236,15 +270,22 @@ namespace OwlTree
                         {
                             try
                             {
-                                if (TryDecode(client.id, bytes, out var message))
+                                var rpcId = new RpcId(bytes);
+                                if (rpcId >= RpcId.FirstRpcId)
                                 {
-                                    _incoming.Enqueue(message);
+                                    RpcEncoding.DecodeRpcHeader(bytes, out rpcId, out var caller, out var callee, out var target);
+                                    if (caller != client.id) continue;
+
+                                    if (callee == ClientId.None)
+                                        RelayUdpMessage(bytes, client.id);
+                                    else
+                                        RelayMessageTo(bytes, _clientData.Find(callee).udpPacket);
                                 }
                             }
                             catch (Exception e)
                             {
                                 if (Logger.includes.exceptions)
-                                    Logger.Write($"FAILED to decode UDP message '{BitConverter.ToString(bytes.ToArray())}' from {client.id}. Exception thrown:\n{e}");
+                                    Logger.Write($"FAILED to relay UDP message '{BitConverter.ToString(bytes.ToArray())}' from {client.id}. Exception thrown:\n{e}");
                             }
                         }
                     }
@@ -283,23 +324,14 @@ namespace OwlTree
                             dataLen = -1;
                         }
 
+                        if (client == ClientData.None)
+                            client = _clientData.Find(socket);
+
                         // disconnect if receive fails
                         if (dataLen <= 0)
                         {
-                            Disconnect(_clientData.Find(socket));
+                            Disconnect(client);
                             break;
-                        }
-
-                        if (client == ClientData.None)
-                        {
-                            client = _clientData.Find(socket);
-
-                            if (client.hash != ReadPacket.header.hash)
-                            {
-                                if (Logger.includes.exceptions)
-                                    Logger.Write($"Incorrect hash received in TCP packet from client {client.id}. Got {ReadPacket.header.hash}, but expected {client.hash}. Ignoring packet.");
-                                continue;
-                            }
                         }
 
                         if (Logger.includes.tcpPreTransform)
@@ -323,24 +355,70 @@ namespace OwlTree
                         {
                             try
                             {
-                                if (TryPingRequestDecode(bytes, out var request))
+                                var rpcId = new RpcId(bytes);
+
+                                if (rpcId.Id == RpcId.ClientDisconnectedId && client.id == Authority)
+                                {
+                                    Disconnect(new ClientId(bytes.Slice(rpcId.ByteLength())));
+                                }
+                                else if (rpcId.Id == RpcId.HostMigrationId && client.id == Authority)
+                                {
+                                    MigrateHost(new ClientId(bytes.Slice(rpcId.ByteLength())));
+                                }
+                                else if ((rpcId.Id == RpcId.NetworkObjectSpawnId || rpcId.Id == RpcId.NetworkObjectDespawnId) && client.id == Authority)
+                                {
+                                    RelayTcpMessage(bytes, client.id);
+                                }
+                                else if (rpcId.Id == RpcId.PingRequestId && TryPingRequestDecode(bytes, out var request))
                                 {
                                     HandlePingRequest(request);
                                 }
-                                else if (TryDecode(client.id, bytes, out var message))
+                                else if (rpcId >= RpcId.FirstRpcId)
                                 {
-                                    _incoming.Enqueue(message);
+                                    RpcEncoding.DecodeRpcHeader(bytes, out rpcId, out var caller, out var callee, out var target);
+                                    if (caller != client.id) continue;
+
+                                    if (callee == ClientId.None)
+                                        RelayTcpMessage(bytes, client.id);
+                                    else
+                                        RelayMessageTo(bytes, _clientData.Find(callee).tcpPacket);
                                 }
                             }
                             catch (Exception e)
                             {
                                 if (Logger.includes.exceptions)
-                                    Logger.Write($"FAILED to decode TCP message '{BitConverter.ToString(bytes.ToArray())}' from {client.id}. Exception thrown:\n{e}");
+                                    Logger.Write($"FAILED to relay TCP message '{BitConverter.ToString(bytes.ToArray())}' from {client.id}. Exception thrown:\n{e}");
                             }
                         }
                     } while (dataRemaining > 0);
                 }
             }
+        }
+
+        private void RelayTcpMessage(ReadOnlySpan<byte> bytes, ClientId source)
+        {
+            foreach (var client in _clientData)
+            {
+                if (client.id == source) continue;
+                RelayMessageTo(bytes, client.tcpPacket);
+            }
+        }
+
+        private void RelayUdpMessage(ReadOnlySpan<byte> bytes, ClientId source)
+        {
+            foreach (var client in _clientData)
+            {
+                if (client.id == source) continue;
+                RelayMessageTo(bytes, client.udpPacket);
+            }
+        }
+
+        private void RelayMessageTo(ReadOnlySpan<byte> bytes, Packet packet)
+        {
+            var span = packet.GetSpan(bytes.Length);
+            for (int i = 0; i < span.Length; i++)
+                span[i] = bytes[i];
+            HasRelayMessages = true;
         }
 
         private void HandlePingRequest(PingRequest request)
@@ -356,14 +434,7 @@ namespace OwlTree
                 {
                     original.PingResponded();
                     _pingRequests.Remove(original);
-                    _incoming.Enqueue(new Message(
-                        ClientId.None, 
-                        LocalId, 
-                        new RpcId(RpcId.PingRequestId), 
-                        NetworkId.None, 
-                        Protocol.Tcp, 
-                        RpcPerms.AnyToAll,
-                        new object[]{original}));
+                    _incoming.Enqueue(new Message(ClientId.None, LocalId, new RpcId(RpcId.PingRequestId), NetworkId.None, Protocol.Tcp, RpcPerms.AnyToAll, new object[]{original}));
                 }
             }
             else
@@ -380,10 +451,6 @@ namespace OwlTree
             }
         }
 
-        /// <summary>
-        /// Write current buffers to client sockets.
-        /// Buffers are cleared after writing.
-        /// </summary>
         public override void Send()
         {
             while (_outgoing.TryDequeue(out var message))
@@ -406,7 +473,6 @@ namespace OwlTree
                     {
                         foreach (var client in _clientData)
                         {
-                            if (message.caller == client.id) continue;
                             Encode(message, client.tcpPacket);
                         }
                     }
@@ -414,7 +480,6 @@ namespace OwlTree
                     {
                         foreach (var client in _clientData)
                         {
-                            if (message.caller == client.id) continue;
                             Encode(message, client.udpPacket);
                         }
                     }
@@ -468,45 +533,45 @@ namespace OwlTree
                         Logger.Write(packetStr.ToString());
                     }
 
-                    _udpServer.SendTo(bytes.ToArray(), client.udpEndPoint);
+                    _udpRelay.SendTo(bytes.ToArray(), client.udpEndPoint);
                     client.udpPacket.Reset();
                 }
             }
 
             HasClientEvent = false;
+            HasRelayMessages = false;
         }
 
-        /// <summary>
-        /// Disconnects all clients, and closes the server.
-        /// </summary>
         public override void Disconnect()
         {
             var ids = _clientData.GetIds();
             foreach (var id in ids)
             {
+                if (id == Authority) continue;
                 Disconnect(id);
             }
-            _tcpServer.Close();
-            _udpServer.Close();
+            Disconnect(Authority);
+            _tcpRelay.Close();
+            _udpRelay.Close();
             IsReady = false;
             IsActive = false;
             OnClientDisconnected?.Invoke(LocalId);
         }
 
-
-        /// <summary>
-        /// Disconnect a client from the server.
-        /// Invokes <c>OnClientDisconnected</c>.
-        /// </summary>
         public override void Disconnect(ClientId id)
         {
             var client = _clientData.Find(id);
             if (client != ClientData.None)
+            {
                 Disconnect(client);
+            }
         }
 
         private void Disconnect(ClientData client)
         {
+            if (client == ClientData.None)
+                return;
+            
             _clientData.Remove(client);
             client.tcpSocket.Close();
             OnClientDisconnected?.Invoke(client.id);
@@ -517,11 +582,57 @@ namespace OwlTree
                 ClientDisconnectEncode(span, client.id);
             }
             HasClientEvent = true;
+
+            if (client.id == Authority)
+            {
+                if (!Migratable)
+                {
+                    Disconnect();
+                }
+                else if (ShutdownWhenEmpty && _clientData.Count <= 0)
+                {
+                    Disconnect();
+                }
+                else if (!ShutdownWhenEmpty && _clientData.Count <= 0)
+                {
+                    Authority = ClientId.None;
+                    _hostAddr = null;
+                    OnHostMigration?.Invoke(Authority);
+                }
+                else
+                {
+                    MigrateHost(FindNewHost());
+                }
+            }
         }
 
+        // TODO: improve heuristic
+        private ClientId FindNewHost()
+        {
+            foreach (var client in _clientData)
+                if (client.id != Authority) return client.id;
+            return ClientId.None;
+        }
+
+        /// <summary>
+        /// Change the authority of the session to the given new host.
+        /// The previous host will be down-graded to a client if they are still connected.
+        /// </summary>
         public override void MigrateHost(ClientId newHost)
         {
-            throw new InvalidOperationException("Servers cannot migrate authority off of themselves.");
+            var data = _clientData.Find(newHost);
+            if (data == ClientData.None)
+                return;
+            Authority = newHost;
+            _hostAddr = data.Address;
+            foreach (var client in _clientData)
+            {
+                var span = client.tcpPacket.GetSpan(ClientMessageLength);
+                HostMigrationEncode(span, newHost);
+            }
+            HasClientEvent = true;
+
+            OnHostMigration?.Invoke(newHost);
         }
     }
 }

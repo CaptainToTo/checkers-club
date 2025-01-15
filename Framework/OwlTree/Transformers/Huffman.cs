@@ -11,7 +11,7 @@ public static class Huffman
     internal struct ByteEncoding
     {
         public byte value;
-        public byte encoding;
+        public int encoding;
         public int bitLen;
 
         public ByteEncoding(int _bitLen = -1) {
@@ -40,7 +40,12 @@ public static class Huffman
                 }
             }
         }
-    }
+
+            public override string ToString()
+            {
+                return Convert.ToString(encoding, 2).PadLeft(bitLen, '0');
+            }
+        }
 
     internal class Node
     {
@@ -76,7 +81,7 @@ public static class Huffman
 
         public int Size()
         {
-            return 1 + (left?.Size() ?? 0) + (right?.Size() ?? 0);
+            return (!isLeaf ? 1 : 8) + (left?.Size() ?? 0) + (right?.Size() ?? 0);
         }
 
         public bool IsEqual(Node other)
@@ -162,8 +167,8 @@ public static class Huffman
         var compression = Compress(bytes, table, out var bitLen);
 
         var size = tree.Size();
-        if (bytes.Length < 13 + (size * 2) + (bitLen / 8) + 1)
-            return;
+        if (bytes.Length < 13 + (size / 8) + (bitLen / 8) + 2)
+            return;// throw new Exception($"tree size is {(size/8) + 1}, compression size is {compression.Length}");
 
         packet.header.compressionEnabled = true;
         BitConverter.TryWriteBytes(bytes, bytes.Length);
@@ -224,7 +229,7 @@ public static class Huffman
         return root;
     }
 
-    internal static void BuildEncodingTable(ByteEncoding[] table, Node tree, byte encoding=0, int bitLen=0)
+    internal static void BuildEncodingTable(ByteEncoding[] table, Node tree, int encoding=0, int bitLen=0)
     {
         if (tree == null)
             return;
@@ -237,7 +242,7 @@ public static class Huffman
         }
         else
         {
-            var rightEncoding = (byte)(encoding | (0x1 << bitLen));
+            var rightEncoding = encoding | (0x1 << bitLen);
             BuildEncodingTable(table, tree.left, encoding, bitLen + 1);
             BuildEncodingTable(table, tree.right, rightEncoding, bitLen + 1);
         }

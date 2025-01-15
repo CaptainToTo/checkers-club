@@ -56,6 +56,9 @@ namespace OwlTree.Generator
             if (name != null)
                 usings = usings.Add(UsingDirective(IdentifierName(name)));
             
+            if (!Helpers.IsUsing(usings, Helpers.Tk_System))
+                usings = usings.Add(UsingDirective(IdentifierName(Helpers.Tk_System)));
+            
             if (!Helpers.IsUsing(usings, Helpers.Tk_OwlTree))
                 usings = usings.Add(UsingDirective(IdentifierName(Helpers.Tk_OwlTree)));
             
@@ -208,64 +211,38 @@ namespace OwlTree.Generator
                                         LiteralExpression(
                                             SyntaxKind.StringLiteralExpression,
                                             Literal("RPCs can only be called on an active connection.")))))))),
-                // if (
-                //     (Connection.Protocols.GetRpcCaller(RpcId) == (RpcCaller)Connection.NetRole) ||
-                //     (Connection.Protocols.GetRpcCaller(RpcId) == RpcCaller.Any && !i_IsReceivingRpc)
-                // )
+                // if (!i_ReceivingRpc != RpcId && Connection.Protocols.CanCallRpc(Connection.NetRole, RpcId))
                 IfStatement(
                     BinaryExpression(
-                        SyntaxKind.LogicalOrExpression,
-                        ParenthesizedExpression(
-                            BinaryExpression(
-                                SyntaxKind.EqualsExpression,
-                                InvocationExpression(
-                                    MemberAccessExpression(
-                                        SyntaxKind.SimpleMemberAccessExpression,
-                                        MemberAccessExpression(
-                                            SyntaxKind.SimpleMemberAccessExpression,
-                                            IdentifierName(Helpers.MTk_Connection),
-                                            IdentifierName(Helpers.MTk_ConnectionProtocols)),
-                                        IdentifierName(Helpers.Tk_GetRpcCaller)))
-                                .WithArgumentList(
-                                    ArgumentList(
-                                        SingletonSeparatedList<ArgumentSyntax>(
-                                            Argument(
-                                                LiteralExpression(
-                                                    SyntaxKind.NumericLiteralExpression,
-                                                    Literal(id)))))),
-                                CastExpression(
-                                    IdentifierName(Helpers.Tk_RpcCaller),
-                                    MemberAccessExpression(
-                                        SyntaxKind.SimpleMemberAccessExpression,
-                                        IdentifierName(Helpers.MTk_Connection),
-                                        IdentifierName(Helpers.MTk_NetRole))))),
-                        ParenthesizedExpression(
-                            BinaryExpression(
-                                SyntaxKind.LogicalAndExpression,
-                                BinaryExpression(
-                                    SyntaxKind.EqualsExpression,
-                                    InvocationExpression(
-                                        MemberAccessExpression(
-                                            SyntaxKind.SimpleMemberAccessExpression,
+                        SyntaxKind.LogicalAndExpression,
+                        BinaryExpression(
+                            SyntaxKind.NotEqualsExpression,
+                            IdentifierName(Helpers.MTk_ReceivingRpc),
+                            LiteralExpression(
+                                SyntaxKind.NumericLiteralExpression,
+                                Literal(id))),
+                        InvocationExpression(
+                            MemberAccessExpression(
+                                SyntaxKind.SimpleMemberAccessExpression,
+                                MemberAccessExpression(
+                                    SyntaxKind.SimpleMemberAccessExpression,
+                                    IdentifierName(Helpers.MTk_Connection),
+                                    IdentifierName(Helpers.MTk_ConnectionProtocols)),
+                                IdentifierName(Helpers.MTk_CanCallRpc)))
+                        .WithArgumentList(
+                            ArgumentList(
+                                SeparatedList<ArgumentSyntax>(
+                                    new SyntaxNodeOrToken[]{
+                                        Argument(
                                             MemberAccessExpression(
                                                 SyntaxKind.SimpleMemberAccessExpression,
                                                 IdentifierName(Helpers.MTk_Connection),
-                                                IdentifierName(Helpers.MTk_ConnectionProtocols)),
-                                            IdentifierName(Helpers.Tk_GetRpcCaller)))
-                                    .WithArgumentList(
-                                        ArgumentList(
-                                            SingletonSeparatedList<ArgumentSyntax>(
-                                                Argument(
-                                                    LiteralExpression(
-                                                        SyntaxKind.NumericLiteralExpression,
-                                                        Literal(id)))))),
-                                    MemberAccessExpression(
-                                        SyntaxKind.SimpleMemberAccessExpression,
-                                        IdentifierName(Helpers.Tk_RpcCaller),
-                                        IdentifierName(Helpers.Tk_AnyCaller))),
-                                PrefixUnaryExpression(
-                                    SyntaxKind.LogicalNotExpression,
-                                    IdentifierName(Helpers.MTk_IsReceivingRpc))))),
+                                                IdentifierName(Helpers.MTk_NetRole))),
+                                        Token(SyntaxKind.CommaToken),
+                                        Argument(
+                                            LiteralExpression(
+                                                SyntaxKind.NumericLiteralExpression,
+                                                Literal(id)))})))),
                     Block(
                         // object[] args = new object[]{args... , (replace RpcCaller w/ LocalId)};
                         LocalDeclarationStatement(
@@ -297,7 +274,7 @@ namespace OwlTree.Generator
                                             InitializerExpression(
                                                 SyntaxKind.ArrayInitializerExpression,
                                                 SeparatedList<ExpressionSyntax>(CreateArgArray(m))))))))),
-                        // int calleeArg = Connection.Protocols.GetRpcCalleeParam(RpcId);
+                        // int calleeArg = Connection.Protocols.GetCalleeIdParam(RpcId);
                         LocalDeclarationStatement(
                         VariableDeclaration(
                             PredefinedType(
@@ -315,7 +292,7 @@ namespace OwlTree.Generator
                                                     SyntaxKind.SimpleMemberAccessExpression,
                                                     IdentifierName(Helpers.MTk_Connection),
                                                     IdentifierName(Helpers.MTk_ConnectionProtocols)),
-                                                IdentifierName(Helpers.Tk_GetRpcCalleeParam)))
+                                                IdentifierName(Helpers.Tk_GetCalleeIdParam)))
                                         .WithArgumentList(
                                             ArgumentList(
                                                 SingletonSeparatedList<ArgumentSyntax>(
@@ -431,12 +408,17 @@ namespace OwlTree.Generator
                                     .WithArgumentList(
                                         ArgumentList(
                                             SeparatedList<ArgumentSyntax>(CreateParamArray(m))))))))
-                // else if (i_IsReceivingRpc)
+                // else if (i_ReceivingRpc == RpcId)
                 //     base.RpcName(args...); <- rpc caller not replaced
                 .WithElse(
                 ElseClause(
                     IfStatement(
-                        IdentifierName(Helpers.MTk_IsReceivingRpc),
+                        BinaryExpression(
+                            SyntaxKind.EqualsExpression,
+                            IdentifierName(Helpers.MTk_ReceivingRpc),
+                            LiteralExpression(
+                                SyntaxKind.NumericLiteralExpression,
+                                Literal(id))),
                         Block(
                             SingletonList<StatementSyntax>(
                                 ExpressionStatement(
@@ -520,7 +502,7 @@ namespace OwlTree.Generator
             {
                 if (i % 2 == 0)
                 {
-                    if (replaceCaller && Helpers.HasAttribute(m.ParameterList.Parameters[i / 2].AttributeLists, Helpers.AttrTk_RpcCaller))
+                    if (replaceCaller && Helpers.HasAttribute(m.ParameterList.Parameters[i / 2].AttributeLists, Helpers.AttrTk_RpcCallerId))
                     {
                         arr[i] = MemberAccessExpression(
                                     SyntaxKind.SimpleMemberAccessExpression,
@@ -547,7 +529,7 @@ namespace OwlTree.Generator
             for (int i = 0; i < arr.Length; i++)
             {
                 if (i % 2 == 0)
-                    if (replaceCaller && Helpers.HasAttribute(m.ParameterList.Parameters[i / 2].AttributeLists, Helpers.AttrTk_RpcCaller))
+                    if (replaceCaller && Helpers.HasAttribute(m.ParameterList.Parameters[i / 2].AttributeLists, Helpers.AttrTk_RpcCallerId))
                     {
                         arr[i] = Argument(MemberAccessExpression(
                                     SyntaxKind.SimpleMemberAccessExpression,

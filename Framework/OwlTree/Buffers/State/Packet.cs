@@ -82,9 +82,9 @@ namespace OwlTree
 
             // 4 bytes
             /// <summary>
-            /// The hash assigned to the client that sent this packet.
+            /// The unique UInt32 assigned to this client which is kept secret between the server and that client.
             /// </summary>
-            internal uint hash;
+            public uint hash { get; internal set; }
 
             public void InsertBytes(Span<byte> bytes)
             {

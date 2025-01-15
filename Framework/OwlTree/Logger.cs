@@ -13,7 +13,7 @@ namespace OwlTree
         /// Function signature for what the logger will call to write.
         /// Provide in the constructor.
         /// </summary>
-        public delegate void Printer(string text);
+        public delegate void Writer(string text);
 
         /// <summary>
         /// Create a new set of logger include rules.
@@ -43,6 +43,7 @@ namespace OwlTree
                 tcpPostTransform = true;
                 udpPreTransform = true;
                 udpPostTransform = true;
+                exceptions = true;
                 logSeparators = true;
                 logTimestamp = true;
                 return this;
@@ -193,6 +194,14 @@ namespace OwlTree
                 return this;
             }
 
+            internal bool exceptions { get; private set; }
+
+            public IncludeRules Exceptions()
+            {
+                exceptions = true;
+                return this;
+            }
+
             internal bool logSeparators { get; private set; }
 
             /// <summary>
@@ -220,13 +229,13 @@ namespace OwlTree
         /// Create a new logger, that will use the provided Printer for writing logs,
         /// and will only log output that passes the given verbosity.
         /// </summary>
-        public Logger(Printer printer, IncludeRules rules)
+        public Logger(Writer printer, IncludeRules rules)
         {
             _printer = printer;
             includes = rules;
         }
 
-        private Printer _printer;
+        private Writer _printer;
         public IncludeRules includes { get; private set; }
 
         private Mutex _lock = new Mutex();

@@ -13,19 +13,20 @@ namespace OwlTree.Generator
     public static class Helpers
     {
         // generator consts
-        public const uint FIRST_RPC_ID = 10; // ! needs to match RpcId.FIRST_RPC_ID
-        public const uint FIRST_TYPE_ID = 2; // ! needs to match NetworkObject.FIRST_TYPE_ID
-        public const byte FIRST_NETWORK_TYPE_ID = 2; // ! needs to match NetworkSpawner.FIRST_NETWORK_TYPE_ID
+        public const uint FirstRpcId = 30; // ! needs to match RpcId.FirstRpcId
+        public const uint FirstTypeId = 2; // ! needs to match NetworkObject.FirstTypeId
+        public const byte FirstNetworkTypeId = 2; // ! needs to match NetworkSpawner.FirstNetworkTypeId
 
         // ! must match defaults on RpcAttribute
-        public const GeneratorState.RpcCaller RPC_CALLER_DEFAULT = GeneratorState.RpcCaller.Any;
-        public const bool RPC_INVOKE_ON_CALLER_DEFAULT = false;
-        public const bool RPC_USE_TCP_DEFAULT = true;
+        public const GeneratorState.RpcPerms RpcCallerDefault = GeneratorState.RpcPerms.AnyToAll;
+        public const bool RpcInvokeOnCallerDefault = false;
+        public const bool RpcUseTcpDefault = true;
 
         // * tokens
 
         // classes and namespaces
         public const string Tk_CompilerServices = "System.Runtime.CompilerServices"; // for the compiler generated attribute
+        public const string Tk_System = "System";
         public const string Tk_OwlTree = "OwlTree";
         public const string Tk_NetworkObject = "NetworkObject";
         public const string Tk_ProxySuffix = "Proxy";
@@ -55,9 +56,9 @@ namespace OwlTree.Generator
         // rpc protocols tokens
         // ! must match members of RpcProtocols abstract class
         public const string Tk_GetProtocol = "GetProtocol";
-        public const string Tk_GetRpcCalleeParam = "GetRpcCalleeParam";
-        public const string Tk_GetRpcCaller = "GetRpcCaller";
-        public const string Tk_GetRpcCallerParam = "GetRpcCallerParam";
+        public const string Tk_GetCalleeIdParam = "GetCalleeIdParam";
+        public const string Tk_GetCallerIdParam = "GetCallerIdParam";
+        public const string Tk_GetRpcPerms = "GetRpcPerms";
         public const string Tk_GetRpcName = "GetRpcName";
         public const string Tk_GetRpcParamName = "GetRpcParamName";
         public const string Tk_GetSendProtocol = "GetSendProtocol";
@@ -82,39 +83,42 @@ namespace OwlTree.Generator
         public const string MTk_Connection = "Connection";
         public const string MTk_LocalId = "LocalId";
         public const string MTk_ConnectionProtocols = "Protocols";
+        public const string MTk_CanCallRpc = "CanCallRpc";
         public const string MTk_Id = "Id";
         public const string MTk_IsActive = "IsActive";
         public const string MTk_NetRole = "NetRole";
-        public const string MTk_IsReceivingRpc = "i_IsReceivingRpc";
+        public const string MTk_ReceivingRpc = "i_ReceivingRpc";
         public const string MTk_OnRpcCall = "i_OnRpcCall";
         public const string MTk_None = "None";
 
-        public const string MTk_NetworkBaseTypeId = "NETWORK_BASE_TYPE_ID";
+        public const string MTk_NetworkBaseTypeId = "NetworkBaseTypeId";
 
         // first id tokens
-        public const string Tk_FirstRpcId = "FIRST_RPC_ID";
-        public const string Tk_FirstRpcIdWithClass = "RpcId.FIRST_RPC_ID";
-        public const string Tk_FirstRpcIdWithNamespace = "OwlTree.RpcId.FIRST_RPC_ID";
+        public const string Tk_FirstRpcId = "FirstRpcId";
+        public const string Tk_FirstRpcIdWithClass = "RpcId.FirstRpcId";
+        public const string Tk_FirstRpcIdWithNamespace = "OwlTree.RpcId.FirstRpcId";
 
-        public const string Tk_FirstTypeId = "FIRST_TYPE_ID";
-        public const string Tk_FirstTypeIdWithClass = "NetworkObject.FIRST_TYPE_ID";
-        public const string Tk_FirstTypeIdWithNamespace = "OwlTree.NetworkObject.FIRST_TYPE_ID";
+        public const string Tk_FirstTypeId = "FirstTypeId";
+        public const string Tk_FirstTypeIdWithClass = "NetworkObject.FirstTypeId";
+        public const string Tk_FirstTypeIdWithNamespace = "OwlTree.NetworkObject.FirstTypeId";
 
         // attributes
         public const string AttrTk_Rpc = "Rpc";
         public const string AttrTk_AssignRpcId = "AssignRpcId";
         public const string AttrTk_IdRegistry = "IdRegistry";
-        public const string AttrTk_RpcCaller = "RpcCaller";
-        public const string AttrTk_RpcCallee = "RpcCallee";
+        public const string AttrTk_RpcCallerId = "CallerId";
+        public const string AttrTk_RpcCalleeId = "CalleeId";
         public const string AttrTk_AssignTypeId = "AssignTypeId";
 
         public const string AttrTk_CompilerGenerated = "CompilerGenerated";
 
         // rpc attr args
-        public const string Tk_RpcCaller = "RpcCaller";
-        public const string Tk_ServerCaller = "Server";
-        public const string Tk_ClientCaller = "Client";
-        public const string Tk_AnyCaller = "Any";
+        public const string Tk_RpcPerms = "RpcPerms";
+        public const string Tk_AuthorityCaller = "AuthorityToClients";
+        public const string Tk_ClientCaller = "ClientsToAuthority";
+        public const string Tk_ClientToClient = "ClientsToClients";
+        public const string Tk_ClientToAll = "ClientsToAll";
+        public const string Tk_AnyCaller = "AnyToAll";
 
         public const string Tk_InvokeOnCaller = "InvokeOnCaller";
 
@@ -455,8 +459,10 @@ namespace OwlTree.Generator
         /// If a parameter is found that isn't encodable, returns that parameter in the err argument.
         /// err = 0 for success, err = 1 for non-encodable, err = 2 for non-ClientId RpcCallee, err = 3 for non-ClientId RpcCaller.
         /// </summary>
-        public static bool IsEncodable(ParameterListSyntax paramList, out int err, out ParameterSyntax pErr)
+        public static bool IsEncodable(ParameterListSyntax paramList, out int err, out ParameterSyntax pErr, out ParameterSyntax calleeId, out ParameterSyntax callerId)
         {
+            calleeId = null;
+            callerId = null;
             foreach (var p in paramList.Parameters)
             {
                 if (!GeneratorState.HasEncodable(RemoveTemplateType(p.Type.ToString())))
@@ -465,17 +471,25 @@ namespace OwlTree.Generator
                     err = 1;
                     return false;
                 }
-                else if (HasAttribute(p.AttributeLists, AttrTk_RpcCallee) && !IsClientId(p))
+                else if (HasAttribute(p.AttributeLists, AttrTk_RpcCalleeId))
                 {
-                    pErr = p;
-                    err = 2;
-                    return false;
+                    calleeId = p;
+                    if (!IsClientId(p))
+                    {
+                        pErr = p;
+                        err = 2;
+                        return false;
+                    }
                 }
-                else if (HasAttribute(p.AttributeLists, AttrTk_RpcCaller) && !IsClientId(p))
+                else if (HasAttribute(p.AttributeLists, AttrTk_RpcCallerId))
                 {
-                    pErr = p;
-                    err = 3;
-                    return false;
+                    callerId = p;
+                    if (!IsClientId(p))
+                    {
+                        pErr = p;
+                        err = 3;
+                        return false;
+                    }
                 }
             }
             pErr = null;
@@ -491,17 +505,22 @@ namespace OwlTree.Generator
             return p.Type.ToString() == Tk_ClientId || p.Type.ToString() == Tk_OwlTree + "." + Tk_ClientId;
         }
 
+        public static bool IsClientId(string type)
+        {
+            return type == Tk_ClientId || type == Tk_OwlTree + "." + Tk_ClientId;
+        }
+
         /// <summary>
         /// Parses the arguments given for the RPC attribute.
         /// </summary>
-        public static void GetRpcAttrArgs(AttributeSyntax a, out GeneratorState.RpcCaller caller, out bool invokeOnCaller, out bool useTcp)
+        public static void GetRpcAttrArgs(AttributeSyntax a, out GeneratorState.RpcPerms caller, out bool invokeOnCaller, out bool useTcp)
         {
-            invokeOnCaller = RPC_INVOKE_ON_CALLER_DEFAULT;
-            useTcp = RPC_USE_TCP_DEFAULT;
+            invokeOnCaller = RpcInvokeOnCallerDefault;
+            useTcp = RpcUseTcpDefault;
 
             if (a.ArgumentList == null)
             {
-                caller = RPC_CALLER_DEFAULT;
+                caller = RpcCallerDefault;
                 return;
             }
 
@@ -509,7 +528,7 @@ namespace OwlTree.Generator
 
             if (args.Count == 0)
             {
-                caller = RPC_CALLER_DEFAULT;
+                caller = RpcCallerDefault;
                 return;
             }
 
@@ -537,16 +556,18 @@ namespace OwlTree.Generator
             }
         }
 
-        public static GeneratorState.RpcCaller GetCallerArg(AttributeArgumentSyntax arg)
+        public static GeneratorState.RpcPerms GetCallerArg(AttributeArgumentSyntax arg)
         {
             var access = (MemberAccessExpressionSyntax)arg.Expression;
             switch (access.Name.ToString())
             {
-                case Tk_ServerCaller: return GeneratorState.RpcCaller.Server;
-                case Tk_ClientCaller: return GeneratorState.RpcCaller.Client;
+                case Tk_AuthorityCaller: return GeneratorState.RpcPerms.AuthorityToClients;
+                case Tk_ClientCaller: return GeneratorState.RpcPerms.ClientsToAuthority;
+                case Tk_ClientToClient: return GeneratorState.RpcPerms.ClientsToClients;
+                case Tk_ClientToAll: return GeneratorState.RpcPerms.ClientsToAll;
                 case Tk_AnyCaller: 
                 default: 
-                    return GeneratorState.RpcCaller.Any;
+                    return GeneratorState.RpcPerms.AnyToAll;
             }
         }
 
