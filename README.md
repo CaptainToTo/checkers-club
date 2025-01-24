@@ -1,5 +1,5 @@
 # Checkers Club C#
-Example project using [Owl Tree v0.1.0](https://github.com/CaptainToTo/owl-tree).
+Example project using [OwlTree v0.2.0](https://github.com/CaptainToTo/owl-tree/releases/tag/v0.2.0).
 
 ![client.gif](client.gif)
 
