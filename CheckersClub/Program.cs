@@ -14,11 +14,18 @@ public class Program
         logId = new Random(DateTime.UtcNow.Millisecond).NextInt64();
         Console.WriteLine("log id is " + logId.ToString());
 
+        if (!Directory.Exists("logs"))
+            Directory.CreateDirectory("logs");
+        if (!Directory.Exists("logs/servers"))
+            Directory.CreateDirectory("logs/servers");
+            if (!Directory.Exists("logs/clients"))
+            Directory.CreateDirectory("logs/clients");
+
         string addr = args.Length >= 2 ? args[1] : "127.0.0.1";
 
         if (args[0] == "server")
         {
-            File.WriteAllText($"OwlTreeServer{logId}.log", "");
+            File.WriteAllText($"logs/servers/server-{logId}.log", "");
             var server = new Connection(new Connection.Args
             {
                 appId = AppId,
@@ -41,7 +48,7 @@ public class Program
         }
         else if (args[0] == "client")
         {
-            File.WriteAllText($"OwlTreeClient{logId}.log", "");
+            File.WriteAllText($"logs/clients/client{logId}.log", "");
             var client = new Connection(new Connection.Args
             {
                 appId = AppId,
@@ -84,7 +91,7 @@ public class Program
             Thread.Sleep(100);
         }
     }
-    static void ServerLog(string text) => File.AppendAllText($"OwlTreeServer{logId}.log", text);
+    static void ServerLog(string text) => File.AppendAllText($"logs/servers/server-{logId}.log", text);
 
 
     // cur state is used to select different update logic, all states are in the ClientStates class
@@ -103,5 +110,5 @@ public class Program
         Console.WriteLine("disconnected...");
         Environment.Exit(0);
     }
-    static void ClientLog(string text) => File.AppendAllText($"OwlTreeClient{logId}.log", text);
+    static void ClientLog(string text) => File.AppendAllText($"logs/clients/clients-{logId}.log", text);
 }

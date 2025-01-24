@@ -122,7 +122,7 @@ namespace OwlTree
             /// This value can be lowered from the default to use older formats of Owl Tree. 
             /// <b>Default = Current Version</b>
             /// </summary>
-            public ushort owlTreeVersion = 1;
+            public ushort owlTreeVersion = 2;
 
             /// <summary>
             /// The minimum Owl Tree version that will be supported. If clients using an older version attempt to connect,
@@ -354,6 +354,11 @@ namespace OwlTree
         private Logger _logger;
 
         /// <summary>
+        /// The logger used by this connection.
+        /// </summary>
+        internal Logger Logger => _logger;
+
+        /// <summary>
         /// Uses this connection's logger to output a message.
         /// </summary>
         public void Log(string message) => _logger.Write(message);
@@ -551,7 +556,7 @@ namespace OwlTree
         /// <summary>
         /// Returns true if the local connection is the authority of this session.
         /// </summary>
-        public bool IsAuthority => !IsRelay && _buffer.LocalId == _buffer.Authority;
+        public bool IsAuthority => !IsRelay && LocalId == Authority;
 
         /// <summary>
         /// Returns true if the current session supports host migration.
@@ -606,10 +611,9 @@ namespace OwlTree
                     case ConnectionEventType.OnConnect:
                         if (_logger.includes.clientEvents)
                             _logger.Write("New client connected: " + result.id.ToString());
-                        if (IsServer)
-                        {
+
+                        if (IsAuthority)
                             _spawner.SendNetworkObjects(result.id);
-                        }
                         else if (IsRelay && result.id == _buffer.Authority)
                         {
                             Authority = result.id;
